@@ -53,48 +53,60 @@ RGB LEDS data is on pin 1
 
 static PROGMEM prog_uint16_t bricks[ brick_count ][4] = {
 	{
-		0b0100010001000100,      //1x4
+		0b0100010001000100,      //1x4 cyan
 		0b0000000011110000,
 		0b0100010001000100,
 		0b0000000011110000
 	},
 	{
-		0b0000010011100000,      //T
+		0b0000010011100000,      //T  purple
 		0b0000010001100100,
 		0b0000000011100100,
 		0b0000010011000100
 	},
 	{
-		0b0000011001100000,      //2x2
+		0b0000011001100000,      //2x2 yellow
 		0b0000011001100000,
 		0b0000011001100000,
 		0b0000011001100000
 	},
 	{
-		0b0000000011100010,      //L
+		0b0000000011100010,      //L orange
 		0b0000010001001100,
 		0b0000100011100000,
 		0b0000011001000100
 	},
 	{
-		0b0000000011101000,      //inverse L
+		0b0000000011101000,      //inverse L blue
 		0b0000110001000100,
 		0b0000001011100000,
 		0b0000010001000110
 	},
 	{
-		0b0000100011000100,      //S
+		0b0000100011000100,      //S green
 		0b0000011011000000,
 		0b0000100011000100,
 		0b0000011011000000
 	},
 	{
-		0b0000010011001000,      //Z
+		0b0000010011001000,      //Z red
 		0b0000110001100000,
 		0b0000010011001000,
 		0b0000110001100000
 	}
 };
+
+//6 bit RGB colors of blocks
+static PROGMEM prog_uint8_t brick_colors[brick_count]={
+	0b00001111, //cyan
+	0b00100011, //purple
+	0b00111100, //yellow
+	0b00110100, //orange?
+	0b00000011, //blue
+	0b00001100, //green
+	0b00110000 //red
+	
+	};
 
 
 /*const unsigned short level_ticks_timeout[ max_level ]  = {
@@ -172,7 +184,7 @@ void screenTest(){
 		for( int k = 0; k < field_height; k++ )
 		{
 			wall[i][k] = 7;
-			display();
+			drawGame();
 			delay(500);
 		}
 	}
@@ -219,7 +231,7 @@ void play(){
 		
 	}
 
-	display();
+	drawGame();
 
 	//pulse onbaord LED and delay game
 	digitalWrite(0, HIGH);   
@@ -232,7 +244,7 @@ void moveDown(){
 	if( checkGround() )
 	{
 		addToWall();
-		display();
+		drawGame();
 		if( checkCeiling() )
 		{
 			gameOver();
@@ -400,8 +412,10 @@ void addToWall()
 	{
 		for( byte k = 0; k < 4; k++ )
 		{
-			if(current_brick.pattern[i][k] != 0)
+			if(current_brick.pattern[i][k] != 0){
 			wall[current_brick.position_x + i][current_brick.position_y + k] = current_brick.color;
+                        
+                        }
 		}
 	}
 }
@@ -470,7 +484,7 @@ void nextBrick()
 
 	current_brick.type = random( 0, 6 );
 
-	current_brick.color = random(1, 7);
+	current_brick.color = pgm_read_byte(&(brick_colors[ current_brick.type ]));
 
 
 
@@ -500,32 +514,38 @@ void flashLine( int line ){
 		for(byte k = 0; k < field_width; k++ )
 		{  
 			if(state)
-			wall[k][line] = 7;
+			wall[k][line] = 0b00111111;
 			else
 			wall[k][line] = 0;
 			
 		}
 		state = !state;
-		display();
+		drawWall();
+                updateDisplay();
 		delay(200);
 	}
 
 }
 
 
-//'Draws' wall and game piece to screen array 
-void display()
-{
-	unsigned short address=0;
-
-	//draw the wall first
-	for(int j=0; j < field_width; j++){
+//draws wall only, does not update display
+void drawWall(){
+  for(int j=0; j < field_width; j++){
 		for(int k = 0; k < field_height; k++ )
 		{
 			draw(wall[j][k],j,k);
 		}
 		
 	}
+  
+}
+
+//'Draws' wall and game piece to screen array 
+void drawGame()
+{
+
+	//draw the wall first
+	drawWall();
 
 	//now draw current piece in play
 	for( int j = 0; j < 4; j++ )
@@ -537,7 +557,7 @@ void display()
 				if( current_brick.position_y + k >= 0 )
 				{
 					draw(current_brick.color, current_brick.position_x + j, current_brick.position_y + k);
-					//field[ position_x + j ][ position_y + k ] = current_brick_color;
+					//field[ position_x + j ][ p osition_y + k ] = current_brick_color;
 				}
 			}
 		}
@@ -550,7 +570,9 @@ void display()
 void draw(byte color, byte x, byte y){
 	
 	unsigned short address=0;
+	byte r,g,b;
 	
+	//calculate address
 	if(x%2==0) //even row
 	address=field_height*x+y;
 	else //odd row
@@ -562,12 +584,14 @@ void draw(byte color, byte x, byte y){
 		rgb[address].b=0;
 	}
 	else{
-		if(bitRead(color,0))
-		rgb[address].r=155; 
-		if(bitRead(color,1))
-		rgb[address].g=155;
-		if(bitRead(color,2))
-		rgb[address].b=155;
+		//calculate colors, map to LED system
+		b=color&0b00000011;
+		g=(color&0b00001100)>>2;
+		r=(color&0b00110000)>>4;
+		
+		rgb[address].r=map(r,0,3,0,255); 
+		rgb[address].g=map(g,0,3,0,255);
+		rgb[address].b=map(b,0,3,0,255);
 	}
 	
 }
