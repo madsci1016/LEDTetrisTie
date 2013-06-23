@@ -120,17 +120,17 @@ static PROGMEM prog_uint16_t bricks[ brick_count ][4] = {
 byte field[field_width][field_height];
 byte wall[field_width][field_height];
 
-unsigned int  ticks        = 0;
+//unsigned int  ticks        = 0;
 unsigned short  last_key      = 0;
 
-unsigned short  current_brick_type;
+byte  current_brick_type;
 //unsigned short  next_brick_type;
-unsigned short  current_brick[4][4];
-unsigned short  current_brick_color;
+byte  current_brick[4][4];
+byte  current_brick_color;
 int position_x, position_y;
-unsigned short  rotation;
+byte  rotation;
 
-unsigned short  level        = 0;
+//unsigned short  level        = 0;
 //unsigned long  score        = 0;
 //unsigned long  score_lines      = 0;
 
@@ -168,7 +168,27 @@ void setup(){
 
 void loop(){
 
-  getLastKey();
+/*for( int i = 0; i < field_width; i++ )
+  {
+    for( int k = 0; k < field_height; k++ )
+    {
+      field[i][k] = 7;
+      display();
+      delay(500);
+    }
+  }
+  
+  
+ */
+
+play(); 
+  
+       
+}
+
+void play(){
+  
+      getLastKey();
 
   if( last_key == UP )
   {
@@ -215,36 +235,15 @@ void loop(){
   delay(100);               // wait for a second
   digitalWrite(0, LOW);    // turn the LED off by making the voltage LOW
   //digitalWrite(1, LOW); 
-  delay(100);             
+  delay(100);      
 }
-
-
-/* for(int i=0; i<80; i++){
-    rgb[i].r=255;
-    rgb[i].g=0;
-    rgb[i].b=0;
-  }
-updateDisplay();
-delay(1000); 
-  for(int i=0; i<80; i++){
-    rgb[i].r=0;
-    rgb[i].g=255;
-    rgb[i].b=0;
-  }
-updateDisplay();
-delay(1000); 
-  for(int i=0; i<80; i++){
-    rgb[i].r=0;
-    rgb[i].g=0;
-    rgb[i].b=255;
-  }
-updateDisplay();
-delay(1000);*/
 
 void moveDown(){
   if( checkGround() )
   {
     addToWall();
+    render();
+    display();
     if( checkCeiling() )
     {
       gameOver();
@@ -265,7 +264,7 @@ void moveDown(){
     shift( 0, 1 );
   }
   //scoreAdjustLevel();
-  ticks = 0;
+  //ticks = 0;
 }
 
 //get functions. set global variables.
@@ -349,9 +348,9 @@ bool checkCollision()
   int x = 0;
   int y =0;
 
-  for( int i = 0; i < 4; i++ )
+  for( byte i = 0; i < 4; i++ )
   {
-    for( int k = 0; k < 4; k++ )
+    for( byte k = 0; k < 4; k++ )
     {
       if( current_brick[i][k] != 0 )
       {
@@ -425,9 +424,9 @@ void addToWall()
   /*
   * put the brick in the wall after the eagle has landed.
   */
-  for( int i = 0; i < 4; i++ )
+  for( byte i = 0; i < 4; i++ )
   {
-    for( int k = 0; k < 4; k++ )
+    for( byte k = 0; k < 4; k++ )
     {
       if(current_brick[i][k] != 0)
       wall[position_x + i][position_y + k] = current_brick_color;
@@ -441,9 +440,9 @@ void updateBrickArray()
   * uses the current_brick_type and rotation variables to render a 4x4 pixel array of the current block.
   */
   unsigned int data = pgm_read_word(&(bricks[ current_brick_type ][ rotation ]));
-  for( int i = 0; i < 4; i++ )
+  for( byte i = 0; i < 4; i++ )
   {
-    for( int k = 0; k < 4; k++ )
+    for( byte k = 0; k < 4; k++ )
     {
       if(bitRead(data, 4*i+3-k))
       current_brick[k][i] = current_brick_color; //probability of this being thought through <= 0
@@ -460,11 +459,11 @@ bool clearLine()
   * returns true if a line was removed and false if there are none.
   */
   int line_check;
-  for( int i = 0; i < field_height; i++ )
+  for( byte i = 0; i < field_height; i++ )
   {
     line_check = 0;
 
-    for( int k = 0; k < field_width; k++ )
+    for( byte k = 0; k < field_width; k++ )
     {
       if( wall[k][i] != 0)  
       line_check++;
@@ -473,9 +472,9 @@ bool clearLine()
     if( line_check == field_width )
     {
       flashLine( i );
-      for( int k = i; k >= 0; k-- )
+      for( int  k = i; k >= 0; k-- )
       {
-        for( int m = 0; m < field_width; m++ )
+        for( byte m = 0; m < field_width; m++ )
         {
           if( k > 0)
           {
@@ -521,36 +520,32 @@ void clearWall()
   /*
   * clears the wall for a new game
   */
-  for( int i = 0; i < field_width; i++ )
+  for( byte i = 0; i < field_width; i++ )
   {
-    for( int k = 0; k < field_height; k++ )
+    for( byte k = 0; k < field_height; k++ )
     {
       wall[i][k] = 0;
     }
   }
 }
 
+
+//joins wall and floating brick into one array which can be displayed
 void render()
 {
-
-
-  /*
-  * joins wall and floating brick into one array which can be displayed
-  */
-
   //copy the wall to the output array
-  for( int i = 0; i < field_width; i++ )
+  for( byte i = 0; i < field_width; i++ )
   {
-    for( int k = 0; k < field_height; k++ )
+    for( byte k = 0; k < field_height; k++ )
     {
       field[i][k] = wall[i][k];
     }
   }
 
   //superimpose the brick array on top of that at the correct position
-  for( int i = 0; i < 4; i++ )
+  for( byte i = 0; i < 4; i++ )
   {
-    for( int k = 0; k < 4; k++ )
+    for( byte k = 0; k < 4; k++ )
     {
       if(current_brick[i][k] != 0)
       {
@@ -563,153 +558,67 @@ void render()
   }
 }
 
+//effect, flashes the line at the given y position (line) a few times.  
 void flashLine( int line ){
-  /*
-  * effect, flashes the line at the given y position (line) a few times.
-  */
-  bool state = 0;
-  for( int i = 0; i < 6; i++ )
+
+  bool state = 1;
+  for(byte i = 0; i < 6; i++ )
   {
-    for( int k = 0; k < field_width; k++ )
+    for(byte k = 0; k < field_width; k++ )
     {  
       if(state)
-      field[k][line] = 7;
+        field[k][line] = 7;
       else
-      field[k][line] = 0;
-      //field[k][line] = state;
+        field[k][line] = 0;
+      
     }
     state = !state;
     display();
-    delay(100);
+    delay(200);
   }
+  
 }
 
+
+//Maps game array to display array. Assumes a UP->Down->Down->Up (Shorest wire path) LED strips display. 
 void display()
 {
-
-  unsigned short row=0;
   unsigned short address=0;
-  /*
-  * Display the current rendered game field
-    //map to my funny display
-  */
 
   //row 0
-  for( int k = 0; k < field_height; k++ )
-  {
-    address=k;
-    
-    if(field[row][k]){
-      if(bitRead(field[row][k],0))
-      rgb[address].r=255; //change to my rows
-      if(bitRead(field[row][k],1))
-      rgb[address].g=255;
-      if(bitRead(field[row][k],2))
-      rgb[address].b=255;
-    }
-    else {
-      rgb[address].r=0;
-      rgb[address].g=0;
-      rgb[address].b=0;
-    }
-  }
-
-  //row 1
-  row++;
-  for( int k = 0; k < field_height; k++ )
-  {
-    address=39-k;
-    
-    if(field[row][k]){
-      if(bitRead(field[row][k],0))
-      rgb[address].r=255; //change to my rows
-      if(bitRead(field[row][k],1))
-      rgb[address].g=255;
-      if(bitRead(field[row][k],2))
-      rgb[address].b=255;
-    }
-    else {
-      rgb[address].r=0;
-      rgb[address].g=0;
-      rgb[address].b=0;
-    }
-  }
-  //row 2
-  row++;
-  for( int k = 0; k < field_height; k++ )
-  {
-    address=40+k;
-    
-    if(field[row][k]){
-      if(bitRead(field[row][k],0))
-      rgb[address].r=255; //change to my rows
-      if(bitRead(field[row][k],1))
-      rgb[address].g=255;
-      if(bitRead(field[row][k],2))
-      rgb[address].b=255;
-    }
-    else {
-      rgb[address].r=0;
-      rgb[address].g=0;
-      rgb[address].b=0;
-    }
-  }
-  //row 3
-  row++;
-  for( int k = 0; k < field_height; k++ )
-  {
-    address=79-k;
-    
-    if(field[row][k]){
-      if(bitRead(field[row][k],0))
-      rgb[address].r=255; //change to my rows
-      if(bitRead(field[row][k],1))
-      rgb[address].g=255;
-      if(bitRead(field[row][k],2))
-      rgb[address].b=255;
-    }
-    else {
-      rgb[address].r=0;
-      rgb[address].g=0;
-      rgb[address].b=0;
-    }
-  }
-  /*
-    for( int k = 0; k < field_height; k++ )
-    {
-      
-            if(field[row][k])
-            rgb[39-k].r=255; //change to my rows
-            else
-            rgb[39-k].r=0;
-        }
-    //row 2
-    for( int k = 0; k < field_height; k++ )
-    {
-      
-            if(field[2][k])
-            rgb[k+40].r=255; //change to my rows
-            else
-            rgb[k+40].r=0;
-        }
-    //row 3
-    for( int k = 0; k < field_height; k++ )
-    {
-      
-            if(field[3][k])
-            rgb[79-k].r=255; //change to my rows
-            else
-            rgb[79-k].r=0;
-        }*/
+  for(int j=0; j < field_width; j++){
+	  for(int k = 0; k < field_height; k++ )
+	  {
+		  
+		if(j%2==0) //even row
+			address=field_height*j+k;
+		else //odd row
+			address=((field_height*(j+1))-1)-k;
+		
+		if(field[j][k]){
+		  if(bitRead(field[j][k],0))
+		  rgb[address].r=155; //change to my rows
+		  if(bitRead(field[j][k],1))
+		  rgb[address].g=155;
+		  if(bitRead(field[j][k],2))
+		  rgb[address].b=155;
+		}
+		else {
+		  rgb[address].r=0;
+		  rgb[address].g=0;
+		  rgb[address].b=0;
+		}
+	  }
+	  
+	}
   updateDisplay();
   //Display.pushData();
 }
 
+//obvious function
 void gameOver()
 {
-  /*
-  * pretty self-explanatory. Also displays final score (maybe)
-  
+/*  
   Serial.println( "Game Over." );
 
   Serial.print( "Level:\t");
@@ -733,8 +642,8 @@ void newGame()
   /*
   * clean up, reset timers, scores, etc. and start a new round.
   */
-  level = 0;
-  ticks = 0;
+//  level = 0;
+ // ticks = 0;
   //score = 0;
   //score_lines = 0;
   last_key = 0;
@@ -743,16 +652,8 @@ void newGame()
   nextBrick();
 }
 
-
+//Update LED strips
 void updateDisplay(){
 
   WS2811RGB(rgb, ARRAYLEN(rgb));
-  /*
-digitalWrite(0, HIGH);   // turn the LED on (HIGH is the voltage level)
-//digitalWrite(1, HIGH);
-delay(1000);               // wait for a second
-digitalWrite(0, LOW);    // turn the LED off by making the voltage LOW
-//digitalWrite(1, LOW); 
-delay(1000);               // wait for a second
-*/
 }
