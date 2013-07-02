@@ -1,5 +1,3 @@
-#include <FastSPI_LED.h>
-
 /*
 * LEDTetrisNeckTie.c
 *
@@ -7,6 +5,8 @@
 *  Author: Bill Porter
 *    www.billporter.info
 *
+* Modified on 7/1/2013
+* Author: Mofidul Jamal
 *
 *    Code to run a wicked cool LED Tetris playing neck tie. Details:              
 *         http://www.billporter.info/2013/06/21/led-tetris-tie/
@@ -17,16 +17,9 @@
 *
 */ 
 
-
-
-/* Notes
-Analog 2 is pin 2
-LED is on pin 0
-RGB LEDS data is on pin 1
-*/
-
 #include <avr/io.h>
 #include <avr/pgmspace.h>
+#include <FastSPI_LED.h>
 
 //constants and initialization
 #define UP  0
@@ -35,18 +28,14 @@ RGB LEDS data is on pin 1
 #define LEFT  3
 #define brick_count 7
 
+//output pin for the data of the ws2811
+#define RGB_LED_PIN 1
+
 //Display Settings
-#define    field_width 5
-#define    field_height 20
-//const short    field_start_x    = 1;
-//const short    field_start_y    = 1;
-//const short           preview_start_x    = 13;
-//const short    preview_start_y    = 1;
-//const short    delimeter_x      = 11;
-//gameplay Settings
-//const bool    display_preview    = 1;
-#define tick_delay 100 //game speed
-#define max_level 9
+#define    FIELD_WIDTH 5
+#define    FIELD_HEIGHT 20
+//game speed, basically delay between moves
+#define TICK_DELAY 100
 #define NUM_LEDS 100
 
 
@@ -108,23 +97,7 @@ static PROGMEM prog_uint8_t brick_colors[brick_count]={
   
 };
 
-
-/*const unsigned short level_ticks_timeout[ max_level ]  = {
-32,
-28,
-24,
-20,
-17,
-13,
-10,
-8,
-5
-};*/
-//const unsigned int score_per_level          = 10; //per brick in lv 1+
-//const unsigned int score_per_line          = 300;
-
-
-byte wall[field_width][field_height];
+byte wall[FIELD_WIDTH][FIELD_HEIGHT];
 //The 'wall' is the 2D array that holds all bricks that have already 'fallen' into place
 
 struct ai_move_info{
@@ -144,11 +117,6 @@ struct brick_type{
 
 struct brick_type ai_brick;
 
-
-//unsigned short  level        = 0;
-//unsigned long  score        = 0;
-//unsigned long  score_lines      = 0;
-
 // Define the RGB pixel array and controller functions, using pin 0 on port b.
 // Sometimes chipsets wire in a backwards sort of way
 struct CRGB { unsigned char b; unsigned char r; unsigned char g; };
@@ -159,9 +127,9 @@ struct CRGB *rgb; //holds RGB brightness info
 void setup(){
 
   pinMode(0, OUTPUT); //LED on Model B
-  pinMode(1, OUTPUT); 
+  pinMode(RGB_LED_PIN, OUTPUT); 
   FastSPI_LED.setLeds(NUM_LEDS);
-  FastSPI_LED.setPin(1);
+  FastSPI_LED.setPin(RGB_LED_PIN);
   FastSPI_LED.setChipset(CFastSPI_LED::SPI_WS2811);
   FastSPI_LED.init();
   FastSPI_LED.start();
@@ -183,8 +151,6 @@ void setup(){
   delay(200); 
   Serial.begin(9600);
   newGame();
-  
-
 }
 
 void loop(){
@@ -196,9 +162,9 @@ void loop(){
 }
 
 void screenTest(){
-  for( int i = 0; i < field_width; i++ )
+  for( int i = 0; i < FIELD_WIDTH; i++ )
   {
-    for( int k = 0; k < field_height; k++ )
+    for( int k = 0; k < FIELD_HEIGHT; k++ )
     {
       wall[i][k] = 7;
       drawGame();
@@ -256,13 +222,14 @@ void play(){
 
   //pulse onbaord LED and delay game
   digitalWrite(0, HIGH);   
-  delay(tick_delay);               
+  delay(TICK_DELAY
+  );               
   digitalWrite(0, LOW);    
-  delay(tick_delay);      
+  delay(TICK_DELAY
+  );      
 }
 
-void performAI()
-{
+void performAI(){
   //save position of the brick in its raw state
   memcpy((void*)&ai_brick, (void*)&current_brick, sizeof(brick_type));
   struct ai_move_info ai_moves[20];
@@ -284,7 +251,7 @@ void performAI()
     //save this leftmost rotated position
     memcpy((void*)&ai_left_rotated_brick, (void*)&current_brick, sizeof(brick_type));
 
-    for(int ai_x = 0; ai_x < field_width-1; ai_x++)
+    for(int ai_x = 0; ai_x < FIELD_WIDTH-1; ai_x++)
     {
       //next move down until we can't
       bool hitGround = false;
@@ -338,13 +305,11 @@ void performAI()
   
 }
 
-byte ai_calculate_weight()
-{
+byte ai_calculate_weight(){
   return get_column_heights(current_brick.position_x);
 }
 
-byte get_column_heights(byte x)
-{
+byte get_column_heights(byte x){
   byte col_height = 0;
 
   //add to wall
@@ -359,14 +324,14 @@ byte get_column_heights(byte x)
   }
   //count
   byte max_col = 0;
-  for(byte j = 0; j < field_width; j++)
+  for(byte j = 0; j < FIELD_WIDTH; j++)
   {
     col_height = 0;
-    for(byte k = field_height-1; k!=0; k--)
+    for(byte k = FIELD_HEIGHT-1; k!=0; k--)
     {
       if(wall[j][k] != 0)
       {
-        col_height = field_height - k;
+        col_height = FIELD_HEIGHT - k;
         //Serial.print(k);
         //Serial.println(" is k");
         //delay(100);
@@ -389,7 +354,7 @@ byte get_column_heights(byte x)
   //return col_height;
   /*
   if(col_height > 0)
-    return col_height / (float)field_width;
+    return col_height / (float)FIELD_WIDTH;
   else
     return 0;
     */
@@ -479,12 +444,12 @@ bool checkCollision()
           //this is another brick IN the wall!
           return true;
         }
-        else if( x < 0 || x >= field_width )
+        else if( x < 0 || x >= FIELD_WIDTH )
         {
           //out to the left or right
           return true;
         }
-        else if( y >= field_height )
+        else if( y >= FIELD_HEIGHT )
         {
           //below sea level
           return true;
@@ -496,16 +461,14 @@ bool checkCollision()
 }
 
 //updates the position variable according to the parameters
-void shift(short right, short down)
-{
+void shift(short right, short down){
   current_brick.position_x += right;
   current_brick.position_y += down;
 }
 
 // updates the rotation variable, wraps around and calls updateBrickArray().
 // direction: 1 for clockwise (default), 0 to revert.
-void rotate( bool direction )
-{
+void rotate( bool direction ){
   if( direction == 1 )
   {
     if(current_brick.rotation == 0)
@@ -560,8 +523,7 @@ void moveDown(){
 }
 
 //put the brick in the wall after the eagle has landed.
-void addToWall()
-{
+void addToWall(){
   for( byte i = 0; i < 4; i++ )
   {
     for( byte k = 0; k < 4; k++ )
@@ -576,8 +538,7 @@ void addToWall()
 
 //uses the current_brick_type and rotation variables to render a 4x4 pixel array of the current block
 // from the 2-byte binary reprsentation of the block
-void updateBrickArray()
-{
+void updateBrickArray(){
   unsigned int data = pgm_read_word(&(bricks[ current_brick.type ][ current_brick.rotation ]));
   for( byte i = 0; i < 4; i++ )
   {
@@ -591,11 +552,10 @@ void updateBrickArray()
   }
 }
 //clears the wall for a new game
-void clearWall()
-{
-  for( byte i = 0; i < field_width; i++ )
+void clearWall(){
+  for( byte i = 0; i < FIELD_WIDTH; i++ )
   {
-    for( byte k = 0; k < field_height; k++ )
+    for( byte k = 0; k < FIELD_HEIGHT; k++ )
     {
       wall[i][k] = 0;
     }
@@ -604,25 +564,24 @@ void clearWall()
 
 // find the lowest completed line, do the removal animation, add to score.
 // returns true if a line was removed and false if there are none.
-bool clearLine()
-{
+bool clearLine(){
   int line_check;
-  for( byte i = 0; i < field_height; i++ )
+  for( byte i = 0; i < FIELD_HEIGHT; i++ )
   {
     line_check = 0;
 
-    for( byte k = 0; k < field_width; k++ )
+    for( byte k = 0; k < FIELD_WIDTH; k++ )
     {
       if( wall[k][i] != 0)  
       line_check++;
     }
 
-    if( line_check == field_width )
+    if( line_check == FIELD_WIDTH )
     {
       flashLine( i );
       for( int  k = i; k >= 0; k-- )
       {
-        for( byte m = 0; m < field_width; m++ )
+        for( byte m = 0; m < FIELD_WIDTH; m++ )
         {
           if( k > 0)
           {
@@ -642,10 +601,9 @@ bool clearLine()
 }
 
 //randomly selects a new brick and resets rotation / position.
-void nextBrick()
-{
+void nextBrick(){
   current_brick.rotation = 0;
-  current_brick.position_x = round(field_width / 2) - 2;
+  current_brick.position_x = round(FIELD_WIDTH / 2) - 2;
   current_brick.position_y = -3;
 
   current_brick.type = random( 0, 6 );
@@ -665,7 +623,7 @@ void flashLine( int line ){
   bool state = 1;
   for(byte i = 0; i < 6; i++ )
   {
-    for(byte k = 0; k < field_width; k++ )
+    for(byte k = 0; k < FIELD_WIDTH; k++ )
     {  
       if(state)
       wall[k][line] = 0b11111111;
@@ -684,8 +642,8 @@ void flashLine( int line ){
 
 //draws wall only, does not update display
 void drawWall(){
-  for(int j=0; j < field_width; j++){
-    for(int k = 0; k < field_height; k++ )
+  for(int j=0; j < FIELD_WIDTH; j++){
+    for(int k = 0; k < FIELD_HEIGHT; k++ )
     {
       draw(wall[j][k],j,k);
     }
@@ -695,8 +653,7 @@ void drawWall(){
 }
 
 //'Draws' wall and game piece to screen array 
-void drawGame()
-{
+void drawGame(){
 
   //draw the wall first
   drawWall();
@@ -728,9 +685,9 @@ void draw(byte color, byte x, byte y){
   
   //calculate address
   if(x%2==0) //even row
-  address=field_height*x+y;
+  address=FIELD_HEIGHT*x+y;
   else //odd row
-  address=((field_height*(x+1))-1)-y;
+  address=((FIELD_HEIGHT*(x+1))-1)-y;
   
   if(color==0){
     rgb[address].r=0;
@@ -751,14 +708,12 @@ void draw(byte color, byte x, byte y){
 }
 
 //obvious function
-void gameOver()
-{
+void gameOver(){
   newGame();
 }
 
 //clean up, reset timers, scores, etc. and start a new round.
-void newGame()
-{
+void newGame(){
 
   //  level = 0;
   // ticks = 0;
