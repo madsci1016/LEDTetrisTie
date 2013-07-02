@@ -127,6 +127,12 @@ static PROGMEM prog_uint8_t brick_colors[brick_count]={
 byte wall[field_width][field_height];
 //The 'wall' is the 2D array that holds all bricks that have already 'fallen' into place
 
+struct ai_move_info{
+  byte rotation;
+  int position_x, position_y;
+  int weight;
+};
+
 struct brick_type{
   byte type; //This is the current brick shape. 
   byte rotation; //active brick rotation
@@ -175,7 +181,7 @@ void setup(){
   }
   updateDisplay();
   delay(200); 
-
+  Serial.begin(9600);
   newGame();
   
 
@@ -242,6 +248,9 @@ void play(){
     
   }
 */
+  if(current_brick.position_y < 0)
+    moveDown();
+    
   performAI();
   drawGame();
 
@@ -256,41 +265,129 @@ void performAI()
 {
   //save position of the brick in its raw state
   memcpy((void*)&ai_brick, (void*)&current_brick, sizeof(brick_type));
-
-  struct brick_type ai_start_brick;
+  struct ai_move_info ai_moves[20];
+  byte ai_move_counter = 0;
+  struct brick_type ai_left_rotated_brick;
+  struct brick_type ai_rotated_brick;
 
   //first check the rotations(initial, rotated once, twice, thrice)
   for(int ai_rot = 0; ai_rot < 3; ai_rot++ )
   {
-    //first shift as far left as possible
+    //rotate if possible
+    if(checkRotate(1) == true)
+      rotate(1);
+    //save the rotated brick
+    memcpy((void*)&ai_rotated_brick, (void*)&current_brick, sizeof(brick_type));
+    //shift as far left as possible
     while(checkShift(-1,0) == true)
       shift(-1, 0);
-    //save this leftmost position
-    memcpy((void*)&ai_start_brick, (void*)&current_brick, sizeof(brick_type));
+    //save this leftmost rotated position
+    memcpy((void*)&ai_left_rotated_brick, (void*)&current_brick, sizeof(brick_type));
 
     for(int ai_x = 0; ai_x < field_width-1; ai_x++)
     {
       //next move down until we can't
       bool hitGround = false;
-      while(hitGround !=true )
+      while(checkGround() == false )
       {
         shift(0,1);
-        hitGround = checkCollision();
       }
       //back up a step
-      shift(0,-1);
+      //shift(0,-1);
       //calculate weight
-
-      //now restore the previous position and shift it right once
-      memcpy((void*)&current_brick, (void*)&ai_start_brick, sizeof(brick_type));
-      if(checkShift(1,0) == true)
-        shift(1,0);
+      float ai_weight = ai_calculate_weight();
+      Serial.println(ai_weight);
+      ai_moves[ai_move_counter].weight = ai_weight;
+      ai_moves[ai_move_counter].rotation = current_brick.rotation;
+      ai_moves[ai_move_counter].position_x = current_brick.position_x;
+      ai_moves[ai_move_counter].position_y = current_brick.position_y;
+      ai_move_counter++;
+      drawGame();
+      delay(500);
+      //now restore the previous position and shift it right by the column # we are checking
+      memcpy((void*)&current_brick, (void*)&ai_left_rotated_brick, sizeof(brick_type));
+      if(checkShift(ai_x+1,0) == true)
+        shift(ai_x+1,0);
       else //if it isnt possible to shift then we cannot go any further right so break out to next rotation
         break;
     }
+
+    //reload rotated start position
+    memcpy((void*)&current_brick, (void*)&ai_rotated_brick, sizeof(brick_type));
   }
+  
+  //find biggest weight 
+  float smallest_weight = ai_moves[0].weight;
+  byte smallest_index = 0;
+  for(byte i = 1; i < ai_move_counter; i++)
+  {
+    if(ai_moves[i].weight <= smallest_weight)
+    {
+      smallest_weight = ai_moves[i].weight;
+      smallest_index = i;
+    }
+  }
+  //go back to initial position
+  current_brick.position_x = ai_moves[smallest_index].position_x;
+  current_brick.position_y = ai_moves[smallest_index].position_y;
+  current_brick.rotation = ai_moves[smallest_index].rotation;
+  updateBrickArray();
+  moveDown();
+  
 }
 
+float ai_calculate_weight()
+{
+  return get_column_heights(current_brick.position_x);
+}
+
+float get_column_heights(byte x)
+{
+  float col_height = 0;
+
+  //add to wall
+  for( byte i = 0; i < 4; i++ )
+  {
+    for( byte k = 0; k < 4; k++ )
+    {
+      if(current_brick.pattern[i][k] != 0){
+        wall[current_brick.position_x + i][current_brick.position_y + k] = current_brick.color;
+      }
+    }
+  }
+  //count
+  float max_col = 0;
+  for(byte j = 0; j < field_width; j++)
+  {
+    for(byte k = 0; k < field_height; k++)
+    {
+      if(wall[j][k] != 0)
+        col_height++;
+    }
+    if(col_height > max_col)
+      max_col = col_height;
+    col_height = 0;
+  }
+  //remove from wall
+  for( byte i = 0; i < 4; i++ )
+  {
+    for( byte k = 0; k < 4; k++ )
+    {
+      if(current_brick.pattern[i][k] != 0){
+        wall[current_brick.position_x + i][current_brick.position_y + k] = 0;
+      }
+    }
+  }
+  return max_col;
+  //return col_height;
+  /*
+  if(col_height > 0)
+    return col_height / (float)field_width;
+  else
+    return 0;
+    */
+
+}
 //get functions. set global variables.
 byte getCommand(){
   
@@ -671,3 +768,6 @@ void updateDisplay(){
 
   FastSPI_LED.show();
 }
+
+
+
