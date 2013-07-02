@@ -130,7 +130,7 @@ byte wall[field_width][field_height];
 struct ai_move_info{
   byte rotation;
   int position_x, position_y;
-  int weight;
+  byte weight;
 };
 
 struct brick_type{
@@ -271,7 +271,7 @@ void performAI()
   struct brick_type ai_rotated_brick;
 
   //first check the rotations(initial, rotated once, twice, thrice)
-  for(int ai_rot = 0; ai_rot < 3; ai_rot++ )
+  for(int ai_rot = 0; ai_rot < 4; ai_rot++ )
   {
     //rotate if possible
     if(checkRotate(1) == true)
@@ -295,29 +295,31 @@ void performAI()
       //back up a step
       //shift(0,-1);
       //calculate weight
-      float ai_weight = ai_calculate_weight();
-      Serial.println(ai_weight);
+      byte ai_weight = ai_calculate_weight();
+      
       ai_moves[ai_move_counter].weight = ai_weight;
       ai_moves[ai_move_counter].rotation = current_brick.rotation;
       ai_moves[ai_move_counter].position_x = current_brick.position_x;
       ai_moves[ai_move_counter].position_y = current_brick.position_y;
       ai_move_counter++;
       drawGame();
-      delay(500);
+      Serial.println(ai_weight);
+      delay(200);
       //now restore the previous position and shift it right by the column # we are checking
       memcpy((void*)&current_brick, (void*)&ai_left_rotated_brick, sizeof(brick_type));
       if(checkShift(ai_x+1,0) == true)
         shift(ai_x+1,0);
-      else //if it isnt possible to shift then we cannot go any further right so break out to next rotation
-        break;
+      //else //if it isnt possible to shift then we cannot go any further right so break out to next rotation
+        //break;
     }
 
     //reload rotated start position
     memcpy((void*)&current_brick, (void*)&ai_rotated_brick, sizeof(brick_type));
+    
   }
   
   //find biggest weight 
-  float smallest_weight = ai_moves[0].weight;
+  byte smallest_weight = ai_moves[0].weight;
   byte smallest_index = 0;
   for(byte i = 1; i < ai_move_counter; i++)
   {
@@ -336,14 +338,14 @@ void performAI()
   
 }
 
-float ai_calculate_weight()
+byte ai_calculate_weight()
 {
   return get_column_heights(current_brick.position_x);
 }
 
-float get_column_heights(byte x)
+byte get_column_heights(byte x)
 {
-  float col_height = 0;
+  byte col_height = 0;
 
   //add to wall
   for( byte i = 0; i < 4; i++ )
@@ -356,17 +358,22 @@ float get_column_heights(byte x)
     }
   }
   //count
-  float max_col = 0;
+  byte max_col = 0;
   for(byte j = 0; j < field_width; j++)
   {
-    for(byte k = 0; k < field_height; k++)
+    col_height = 0;
+    for(byte k = field_height-1; k!=0; k--)
     {
       if(wall[j][k] != 0)
-        col_height++;
+      {
+        col_height = field_height - k;
+        //Serial.print(k);
+        //Serial.println(" is k");
+        //delay(100);
+      }
     }
     if(col_height > max_col)
       max_col = col_height;
-    col_height = 0;
   }
   //remove from wall
   for( byte i = 0; i < 4; i++ )
