@@ -7,7 +7,7 @@
 *
 * Modified on 7/1/2013
 * Author: Mofidul Jamal
-*
+* Now runs on a Teensy 2.0, using FastSPI library
 *    Code to run a wicked cool LED Tetris playing neck tie. Details:              
 *         http://www.billporter.info/2013/06/21/led-tetris-tie/
 *
@@ -102,7 +102,7 @@ byte wall[FIELD_WIDTH][FIELD_HEIGHT];
 
 struct TAiMoveInfo{
   byte rotation;
-  int position_x, position_y;
+  int positionX, positionY;
   byte weight;
 };
 
@@ -110,7 +110,7 @@ struct TBrick{
   byte type; //This is the current brick shape. 
   byte rotation; //active brick rotation
   byte color; //active brick color
-  int position_x, position_y; //active brick position
+  int positionX, positionY; //active brick position
   byte pattern[4][4]; //2D array of active brick shape, used for drawing and collosion detection
 
 } currentBrick;
@@ -212,7 +212,7 @@ void play(){
     
   }
 */
-  if(currentBrick.position_y < 0)
+  if(currentBrick.positionY < 0)
     moveDown();
     
   performAI();
@@ -250,7 +250,7 @@ void performAI(){
     //save this leftmost rotated position
     memcpy((void*)&aiLeftRotatedBrick, (void*)&currentBrick, sizeof(TBrick));
 
-    for(int aiXPosition = 0; aiXPosition < FIELD_WIDTH-1; aiXPosition++)
+    for(int aiPositionY = 0; aiPositionY < FIELD_WIDTH-1; aiPositionY++)
     {
       //next move down until we can't
       bool hitGround = false;
@@ -261,20 +261,20 @@ void performAI(){
       //back up a step
       //shift(0,-1);
       //calculate weight
-      byte aiMoveWeight = AiCalculateWeight();
+      byte aiMoveWeight = aiCalculateWeight();
       
       aiMoves[aiMoveCounter].weight = aiMoveWeight;
       aiMoves[aiMoveCounter].rotation = currentBrick.rotation;
-      aiMoves[aiMoveCounter].position_x = currentBrick.position_x;
-      aiMoves[aiMoveCounter].position_y = currentBrick.position_y;
+      aiMoves[aiMoveCounter].positionX = currentBrick.positionX;
+      aiMoves[aiMoveCounter].positionY = currentBrick.positionY;
       aiMoveCounter++;
       drawGame();
       Serial.println(aiMoveWeight);
       delay(200);
       //now restore the previous position and shift it right by the column # we are checking
       memcpy((void*)&currentBrick, (void*)&aiLeftRotatedBrick, sizeof(TBrick));
-      if(checkShift(aiXPosition+1,0) == true)
-        shift(aiXPosition+1,0);
+      if(checkShift(aiPositionY+1,0) == true)
+        shift(aiPositionY+1,0);
       //else //if it isnt possible to shift then we cannot go any further right so break out to next rotation
         //break;
     }
@@ -296,20 +296,20 @@ void performAI(){
     }
   }
   //go back to initial position
-  currentBrick.position_x = aiMoves[smallestWeightIndex].position_x;
-  currentBrick.position_y = aiMoves[smallestWeightIndex].position_y;
+  currentBrick.positionX = aiMoves[smallestWeightIndex].positionX;
+  currentBrick.positionY = aiMoves[smallestWeightIndex].positionY;
   currentBrick.rotation = aiMoves[smallestWeightIndex].rotation;
   updateBrickArray();
   moveDown();
   
 }
 
-byte AiCalculateWeight(){
-  return get_column_heights(currentBrick.position_x);
+byte aiCalculateWeight(){
+  return getHighestColumn(currentBrick.positionX);
 }
 
-byte get_column_heights(byte x){
-  byte col_height = 0;
+byte getHighestColumn(byte x){
+  byte columnHeight = 0;
 
   //add to wall
   for( byte i = 0; i < 4; i++ )
@@ -317,27 +317,27 @@ byte get_column_heights(byte x){
     for( byte k = 0; k < 4; k++ )
     {
       if(currentBrick.pattern[i][k] != 0){
-        wall[currentBrick.position_x + i][currentBrick.position_y + k] = currentBrick.color;
+        wall[currentBrick.positionX + i][currentBrick.positionY + k] = currentBrick.color;
       }
     }
   }
   //count
-  byte max_col = 0;
+  byte maxColumnHeight = 0;
   for(byte j = 0; j < FIELD_WIDTH; j++)
   {
-    col_height = 0;
+    columnHeight = 0;
     for(byte k = FIELD_HEIGHT-1; k!=0; k--)
     {
       if(wall[j][k] != 0)
       {
-        col_height = FIELD_HEIGHT - k;
+        columnHeight = FIELD_HEIGHT - k;
         //Serial.print(k);
         //Serial.println(" is k");
         //delay(100);
       }
     }
-    if(col_height > max_col)
-      max_col = col_height;
+    if(columnHeight > maxColumnHeight)
+      maxColumnHeight = columnHeight;
   }
   //remove from wall
   for( byte i = 0; i < 4; i++ )
@@ -345,18 +345,11 @@ byte get_column_heights(byte x){
     for( byte k = 0; k < 4; k++ )
     {
       if(currentBrick.pattern[i][k] != 0){
-        wall[currentBrick.position_x + i][currentBrick.position_y + k] = 0;
+        wall[currentBrick.positionX + i][currentBrick.positionY + k] = 0;
       }
     }
   }
-  return max_col;
-  //return col_height;
-  /*
-  if(col_height > 0)
-    return col_height / (float)FIELD_WIDTH;
-  else
-    return 0;
-    */
+  return maxColumnHeight;
 
 }
 //get functions. set global variables.
@@ -413,7 +406,7 @@ bool checkCeiling()
     {
       if(currentBrick.pattern[i][k] != 0)
       {
-        if( ( currentBrick.position_y + k ) < 0 )
+        if( ( currentBrick.positionY + k ) < 0 )
         {
           return true;
         }
@@ -435,8 +428,8 @@ bool checkCollision()
     {
       if( currentBrick.pattern[i][k] != 0 )
       {
-        x = currentBrick.position_x + i;
-        y = currentBrick.position_y + k;
+        x = currentBrick.positionX + i;
+        y = currentBrick.positionY + k;
 
         if(x >= 0 && y >= 0 && wall[x][y] != 0)
         {
@@ -461,8 +454,8 @@ bool checkCollision()
 
 //updates the position variable according to the parameters
 void shift(short right, short down){
-  currentBrick.position_x += right;
-  currentBrick.position_y += down;
+  currentBrick.positionX += right;
+  currentBrick.positionY += down;
 }
 
 // updates the rotation variable, wraps around and calls updateBrickArray().
@@ -528,7 +521,7 @@ void addToWall(){
     for( byte k = 0; k < 4; k++ )
     {
       if(currentBrick.pattern[i][k] != 0){
-        wall[currentBrick.position_x + i][currentBrick.position_y + k] = currentBrick.color;
+        wall[currentBrick.positionX + i][currentBrick.positionY + k] = currentBrick.color;
         
       }
     }
@@ -602,8 +595,8 @@ bool clearLine(){
 //randomly selects a new brick and resets rotation / position.
 void nextBrick(){
   currentBrick.rotation = 0;
-  currentBrick.position_x = round(FIELD_WIDTH / 2) - 2;
-  currentBrick.position_y = -3;
+  currentBrick.positionX = round(FIELD_WIDTH / 2) - 2;
+  currentBrick.positionY = -3;
 
   currentBrick.type = random( 0, 6 );
 
@@ -664,10 +657,10 @@ void drawGame(){
     {
       if(currentBrick.pattern[j][k] != 0)
       {
-        if( currentBrick.position_y + k >= 0 )
+        if( currentBrick.positionY + k >= 0 )
         {
-          draw(currentBrick.color, currentBrick.position_x + j, currentBrick.position_y + k);
-          //field[ position_x + j ][ p osition_y + k ] = currentBrick_color;
+          draw(currentBrick.color, currentBrick.positionX + j, currentBrick.positionY + k);
+          //field[ positionX + j ][ p osition_y + k ] = currentBrick_color;
         }
       }
     }
