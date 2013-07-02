@@ -26,7 +26,7 @@
 #define DOWN  1
 #define RIGHT  2
 #define LEFT  3
-#define brick_count 7
+#define BRICK_COUNT 7
 
 //output pin for the data of the ws2811
 #define RGB_LED_PIN 1
@@ -39,7 +39,7 @@
 #define NUM_LEDS 100
 
 
-static PROGMEM prog_uint16_t bricks[ brick_count ][4] = {
+static PROGMEM prog_uint16_t bricks[ BRICK_COUNT ][4] = {
   {
     0b0100010001000100,      //1x4 cyan
     0b0000000011110000,
@@ -86,7 +86,7 @@ static PROGMEM prog_uint16_t bricks[ brick_count ][4] = {
 
 //8 bit RGB colors of blocks
 //RRRGGGBB
-static PROGMEM prog_uint8_t brick_colors[brick_count]={
+static PROGMEM prog_uint8_t brick_colors[BRICK_COUNT]={
   0b00011111, //cyan
   0b10000010, //purple
   0b11111100, //yellow
@@ -100,22 +100,20 @@ static PROGMEM prog_uint8_t brick_colors[brick_count]={
 byte wall[FIELD_WIDTH][FIELD_HEIGHT];
 //The 'wall' is the 2D array that holds all bricks that have already 'fallen' into place
 
-struct ai_move_info{
+struct TAiMoveInfo{
   byte rotation;
   int position_x, position_y;
   byte weight;
 };
 
-struct brick_type{
+struct TBrick{
   byte type; //This is the current brick shape. 
   byte rotation; //active brick rotation
   byte color; //active brick color
   int position_x, position_y; //active brick position
   byte pattern[4][4]; //2D array of active brick shape, used for drawing and collosion detection
 
-} current_brick;
-
-struct brick_type ai_brick;
+} currentBrick;
 
 // Define the RGB pixel array and controller functions, using pin 0 on port b.
 // Sometimes chipsets wire in a backwards sort of way
@@ -214,7 +212,7 @@ void play(){
     
   }
 */
-  if(current_brick.position_y < 0)
+  if(currentBrick.position_y < 0)
     moveDown();
     
   performAI();
@@ -230,28 +228,29 @@ void play(){
 }
 
 void performAI(){
+  struct TBrick initialBrick;
   //save position of the brick in its raw state
-  memcpy((void*)&ai_brick, (void*)&current_brick, sizeof(brick_type));
-  struct ai_move_info ai_moves[20];
-  byte ai_move_counter = 0;
-  struct brick_type ai_left_rotated_brick;
-  struct brick_type ai_rotated_brick;
+  memcpy((void*)&initialBrick, (void*)&currentBrick, sizeof(TBrick));
+  struct TAiMoveInfo aiMoves[20];
+  byte aiMoveCounter = 0;
+  struct TBrick aiLeftRotatedBrick;
+  struct TBrick aiRotatedBrick;
 
   //first check the rotations(initial, rotated once, twice, thrice)
-  for(int ai_rot = 0; ai_rot < 4; ai_rot++ )
+  for(int aiRotation = 0; aiRotation < 4; aiRotation++ )
   {
     //rotate if possible
     if(checkRotate(1) == true)
       rotate(1);
     //save the rotated brick
-    memcpy((void*)&ai_rotated_brick, (void*)&current_brick, sizeof(brick_type));
+    memcpy((void*)&aiRotatedBrick, (void*)&currentBrick, sizeof(TBrick));
     //shift as far left as possible
     while(checkShift(-1,0) == true)
       shift(-1, 0);
     //save this leftmost rotated position
-    memcpy((void*)&ai_left_rotated_brick, (void*)&current_brick, sizeof(brick_type));
+    memcpy((void*)&aiLeftRotatedBrick, (void*)&currentBrick, sizeof(TBrick));
 
-    for(int ai_x = 0; ai_x < FIELD_WIDTH-1; ai_x++)
+    for(int aiXPosition = 0; aiXPosition < FIELD_WIDTH-1; aiXPosition++)
     {
       //next move down until we can't
       bool hitGround = false;
@@ -262,51 +261,51 @@ void performAI(){
       //back up a step
       //shift(0,-1);
       //calculate weight
-      byte ai_weight = ai_calculate_weight();
+      byte aiMoveWeight = AiCalculateWeight();
       
-      ai_moves[ai_move_counter].weight = ai_weight;
-      ai_moves[ai_move_counter].rotation = current_brick.rotation;
-      ai_moves[ai_move_counter].position_x = current_brick.position_x;
-      ai_moves[ai_move_counter].position_y = current_brick.position_y;
-      ai_move_counter++;
+      aiMoves[aiMoveCounter].weight = aiMoveWeight;
+      aiMoves[aiMoveCounter].rotation = currentBrick.rotation;
+      aiMoves[aiMoveCounter].position_x = currentBrick.position_x;
+      aiMoves[aiMoveCounter].position_y = currentBrick.position_y;
+      aiMoveCounter++;
       drawGame();
-      Serial.println(ai_weight);
+      Serial.println(aiMoveWeight);
       delay(200);
       //now restore the previous position and shift it right by the column # we are checking
-      memcpy((void*)&current_brick, (void*)&ai_left_rotated_brick, sizeof(brick_type));
-      if(checkShift(ai_x+1,0) == true)
-        shift(ai_x+1,0);
+      memcpy((void*)&currentBrick, (void*)&aiLeftRotatedBrick, sizeof(TBrick));
+      if(checkShift(aiXPosition+1,0) == true)
+        shift(aiXPosition+1,0);
       //else //if it isnt possible to shift then we cannot go any further right so break out to next rotation
         //break;
     }
 
     //reload rotated start position
-    memcpy((void*)&current_brick, (void*)&ai_rotated_brick, sizeof(brick_type));
+    memcpy((void*)&currentBrick, (void*)&aiRotatedBrick, sizeof(TBrick));
     
   }
   
-  //find biggest weight 
-  byte smallest_weight = ai_moves[0].weight;
-  byte smallest_index = 0;
-  for(byte i = 1; i < ai_move_counter; i++)
+  //find smallest weight 
+  byte smallestWeight = aiMoves[0].weight;
+  byte smallestWeightIndex = 0;
+  for(byte i = 1; i < aiMoveCounter; i++)
   {
-    if(ai_moves[i].weight <= smallest_weight)
+    if(aiMoves[i].weight <= smallestWeight)
     {
-      smallest_weight = ai_moves[i].weight;
-      smallest_index = i;
+      smallestWeight = aiMoves[i].weight;
+      smallestWeightIndex = i;
     }
   }
   //go back to initial position
-  current_brick.position_x = ai_moves[smallest_index].position_x;
-  current_brick.position_y = ai_moves[smallest_index].position_y;
-  current_brick.rotation = ai_moves[smallest_index].rotation;
+  currentBrick.position_x = aiMoves[smallestWeightIndex].position_x;
+  currentBrick.position_y = aiMoves[smallestWeightIndex].position_y;
+  currentBrick.rotation = aiMoves[smallestWeightIndex].rotation;
   updateBrickArray();
   moveDown();
   
 }
 
-byte ai_calculate_weight(){
-  return get_column_heights(current_brick.position_x);
+byte AiCalculateWeight(){
+  return get_column_heights(currentBrick.position_x);
 }
 
 byte get_column_heights(byte x){
@@ -317,8 +316,8 @@ byte get_column_heights(byte x){
   {
     for( byte k = 0; k < 4; k++ )
     {
-      if(current_brick.pattern[i][k] != 0){
-        wall[current_brick.position_x + i][current_brick.position_y + k] = current_brick.color;
+      if(currentBrick.pattern[i][k] != 0){
+        wall[currentBrick.position_x + i][currentBrick.position_y + k] = currentBrick.color;
       }
     }
   }
@@ -345,8 +344,8 @@ byte get_column_heights(byte x){
   {
     for( byte k = 0; k < 4; k++ )
     {
-      if(current_brick.pattern[i][k] != 0){
-        wall[current_brick.position_x + i][current_brick.position_y + k] = 0;
+      if(currentBrick.pattern[i][k] != 0){
+        wall[currentBrick.position_x + i][currentBrick.position_y + k] = 0;
       }
     }
   }
@@ -412,9 +411,9 @@ bool checkCeiling()
   {
     for( int k = 0; k < 4; k++ )
     {
-      if(current_brick.pattern[i][k] != 0)
+      if(currentBrick.pattern[i][k] != 0)
       {
-        if( ( current_brick.position_y + k ) < 0 )
+        if( ( currentBrick.position_y + k ) < 0 )
         {
           return true;
         }
@@ -434,10 +433,10 @@ bool checkCollision()
   {
     for( byte k = 0; k < 4; k++ )
     {
-      if( current_brick.pattern[i][k] != 0 )
+      if( currentBrick.pattern[i][k] != 0 )
       {
-        x = current_brick.position_x + i;
-        y = current_brick.position_y + k;
+        x = currentBrick.position_x + i;
+        y = currentBrick.position_y + k;
 
         if(x >= 0 && y >= 0 && wall[x][y] != 0)
         {
@@ -462,8 +461,8 @@ bool checkCollision()
 
 //updates the position variable according to the parameters
 void shift(short right, short down){
-  current_brick.position_x += right;
-  current_brick.position_y += down;
+  currentBrick.position_x += right;
+  currentBrick.position_y += down;
 }
 
 // updates the rotation variable, wraps around and calls updateBrickArray().
@@ -471,24 +470,24 @@ void shift(short right, short down){
 void rotate( bool direction ){
   if( direction == 1 )
   {
-    if(current_brick.rotation == 0)
+    if(currentBrick.rotation == 0)
     {
-      current_brick.rotation = 3;
+      currentBrick.rotation = 3;
     }
     else
     {
-      current_brick.rotation--;
+      currentBrick.rotation--;
     }
   }
   else
   {
-    if(current_brick.rotation == 3)
+    if(currentBrick.rotation == 3)
     {
-      current_brick.rotation = 0;
+      currentBrick.rotation = 0;
     }
     else
     {
-      current_brick.rotation++;
+      currentBrick.rotation++;
     }
   }
   updateBrickArray();
@@ -528,26 +527,26 @@ void addToWall(){
   {
     for( byte k = 0; k < 4; k++ )
     {
-      if(current_brick.pattern[i][k] != 0){
-        wall[current_brick.position_x + i][current_brick.position_y + k] = current_brick.color;
+      if(currentBrick.pattern[i][k] != 0){
+        wall[currentBrick.position_x + i][currentBrick.position_y + k] = currentBrick.color;
         
       }
     }
   }
 }
 
-//uses the current_brick_type and rotation variables to render a 4x4 pixel array of the current block
+//uses the current_TBrick and rotation variables to render a 4x4 pixel array of the current block
 // from the 2-byte binary reprsentation of the block
 void updateBrickArray(){
-  unsigned int data = pgm_read_word(&(bricks[ current_brick.type ][ current_brick.rotation ]));
+  unsigned int data = pgm_read_word(&(bricks[ currentBrick.type ][ currentBrick.rotation ]));
   for( byte i = 0; i < 4; i++ )
   {
     for( byte k = 0; k < 4; k++ )
     {
       if(bitRead(data, 4*i+3-k))
-      current_brick.pattern[k][i] = current_brick.color; 
+      currentBrick.pattern[k][i] = currentBrick.color; 
       else
-      current_brick.pattern[k][i] = 0;
+      currentBrick.pattern[k][i] = 0;
     }
   }
 }
@@ -602,13 +601,13 @@ bool clearLine(){
 
 //randomly selects a new brick and resets rotation / position.
 void nextBrick(){
-  current_brick.rotation = 0;
-  current_brick.position_x = round(FIELD_WIDTH / 2) - 2;
-  current_brick.position_y = -3;
+  currentBrick.rotation = 0;
+  currentBrick.position_x = round(FIELD_WIDTH / 2) - 2;
+  currentBrick.position_y = -3;
 
-  current_brick.type = random( 0, 6 );
+  currentBrick.type = random( 0, 6 );
 
-  current_brick.color = pgm_read_byte(&(brick_colors[ current_brick.type ]));
+  currentBrick.color = pgm_read_byte(&(brick_colors[ currentBrick.type ]));
 
 
 
@@ -663,12 +662,12 @@ void drawGame(){
   {
     for( int k = 0; k < 4; k++ )
     {
-      if(current_brick.pattern[j][k] != 0)
+      if(currentBrick.pattern[j][k] != 0)
       {
-        if( current_brick.position_y + k >= 0 )
+        if( currentBrick.position_y + k >= 0 )
         {
-          draw(current_brick.color, current_brick.position_x + j, current_brick.position_y + k);
-          //field[ position_x + j ][ p osition_y + k ] = current_brick_color;
+          draw(currentBrick.color, currentBrick.position_x + j, currentBrick.position_y + k);
+          //field[ position_x + j ][ p osition_y + k ] = currentBrick_color;
         }
       }
     }
