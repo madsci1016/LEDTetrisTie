@@ -103,7 +103,7 @@ byte wall[FIELD_WIDTH][FIELD_HEIGHT];
 struct TAiMoveInfo{
   byte rotation;
   int positionX, positionY;
-  byte weight;
+  int weight;
 };
 
 struct TBrick{
@@ -261,7 +261,7 @@ void performAI(){
       //back up a step
       //shift(0,-1);
       //calculate weight
-      byte aiMoveWeight = aiCalculateWeight();
+      int aiMoveWeight = aiCalculateWeight();
       
       aiMoves[aiMoveCounter].weight = aiMoveWeight;
       aiMoves[aiMoveCounter].rotation = currentBrick.rotation;
@@ -285,9 +285,9 @@ void performAI(){
   }
   
   //find smallest weight 
-  byte smallestWeight = aiMoves[0].weight;
-  byte smallestWeightIndex = 0;
-  for(byte i = 1; i < aiMoveCounter; i++)
+  int smallestWeight = aiMoves[0].weight;
+  int smallestWeightIndex = 0;
+  for(int i = 1; i < aiMoveCounter; i++)
   {
     if(aiMoves[i].weight <= smallestWeight)
     {
@@ -304,29 +304,23 @@ void performAI(){
   
 }
 
-byte aiCalculateWeight(){
-  return getHighestColumn(currentBrick.positionX);
+int aiCalculateWeight(){
+  addToWall(); //add to wall first before calculating ai stuffs
+
+  int highestColumn = getHighestColumn();
+  int holeCount = getHoleCount();
+  removeFromWall(); //undo the wall addition when done
+  return (3 * highestColumn) + (5 * holeCount);
 }
 
-byte getHighestColumn(byte x){
-  byte columnHeight = 0;
-
-  //add to wall
-  for( byte i = 0; i < 4; i++ )
-  {
-    for( byte k = 0; k < 4; k++ )
-    {
-      if(currentBrick.pattern[i][k] != 0){
-        wall[currentBrick.positionX + i][currentBrick.positionY + k] = currentBrick.color;
-      }
-    }
-  }
+int getHighestColumn(){
+  int columnHeight = 0;
   //count
-  byte maxColumnHeight = 0;
-  for(byte j = 0; j < FIELD_WIDTH; j++)
+  int maxColumnHeight = 0;
+  for(int j = 0; j < FIELD_WIDTH; j++)
   {
     columnHeight = 0;
-    for(byte k = FIELD_HEIGHT-1; k!=0; k--)
+    for(int k = FIELD_HEIGHT-1; k!=0; k--)
     {
       if(wall[j][k] != 0)
       {
@@ -339,18 +333,19 @@ byte getHighestColumn(byte x){
     if(columnHeight > maxColumnHeight)
       maxColumnHeight = columnHeight;
   }
-  //remove from wall
-  for( byte i = 0; i < 4; i++ )
+  return maxColumnHeight;
+}
+
+int getHoleCount(){
+  int holeCount = 0;
+  for(int j = 0; j < FIELD_WIDTH; j++)
   {
-    for( byte k = 0; k < 4; k++ )
+    for(int k = currentBrick.positionY + 2; k < FIELD_HEIGHT; k++)
     {
-      if(currentBrick.pattern[i][k] != 0){
-        wall[currentBrick.positionX + i][currentBrick.positionY + k] = 0;
-      }
+      if(wall[j][k] == 0)
+        holeCount++;
     }
   }
-  return maxColumnHeight;
-
 }
 //get functions. set global variables.
 byte getCommand(){
@@ -528,6 +523,19 @@ void addToWall(){
   }
 }
 
+//removes brick from wall, used by ai algo
+void removeFromWall(){
+  for( byte i = 0; i < 4; i++ )
+  {
+    for( byte k = 0; k < 4; k++ )
+    {
+      if(currentBrick.pattern[i][k] != 0){
+        wall[currentBrick.positionX + i][currentBrick.positionY + k] = 0;
+        
+      }
+    }
+  }
+}
 //uses the current_TBrick and rotation variables to render a 4x4 pixel array of the current block
 // from the 2-byte binary reprsentation of the block
 void updateBrickArray(){
