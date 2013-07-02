@@ -1,3 +1,5 @@
+#include <FastSPI_LED.h>
+
 /*
 * LEDTetrisNeckTie.c
 *
@@ -23,9 +25,6 @@ LED is on pin 0
 RGB LEDS data is on pin 1
 */
 
-
-#include <WS2811.h>
-
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 
@@ -37,7 +36,7 @@ RGB LEDS data is on pin 1
 #define brick_count 7
 
 //Display Settings
-#define    field_width 4
+#define    field_width 5
 #define    field_height 20
 //const short    field_start_x    = 1;
 //const short    field_start_y    = 1;
@@ -48,7 +47,7 @@ RGB LEDS data is on pin 1
 //const bool    display_preview    = 1;
 #define tick_delay 100 //game speed
 #define max_level 9
-
+#define NUM_LEDS 100
 
 
 static PROGMEM prog_uint16_t bricks[ brick_count ][4] = {
@@ -137,20 +136,30 @@ struct brick_type{
 
 } current_brick;
 
+struct brick_type ai_brick;
+
 
 //unsigned short  level        = 0;
 //unsigned long  score        = 0;
 //unsigned long  score_lines      = 0;
 
 // Define the RGB pixel array and controller functions, using pin 0 on port b.
-DEFINE_WS2811_FN(WS2811RGB, PORTB, 1)
-RGB_t rgb[80]; //holds RGB brightness info
+// Sometimes chipsets wire in a backwards sort of way
+struct CRGB { unsigned char b; unsigned char r; unsigned char g; };
+// struct CRGB { unsigned char r; unsigned char g; unsigned char b; };
+struct CRGB *leds; 
+struct CRGB *rgb; //holds RGB brightness info
 
 void setup(){
 
   pinMode(0, OUTPUT); //LED on Model B
   pinMode(1, OUTPUT); 
-
+  FastSPI_LED.setLeds(NUM_LEDS);
+  FastSPI_LED.setPin(1);
+  FastSPI_LED.setChipset(CFastSPI_LED::SPI_WS2811);
+  FastSPI_LED.init();
+  FastSPI_LED.start();
+  rgb = (struct CRGB*)FastSPI_LED.getRGBData();
   for(int i=0; i<10; i++){
     rgb[i].r=0;
     rgb[i].g=0;
@@ -168,7 +177,7 @@ void setup(){
   delay(200); 
 
   newGame();
-
+  
 
 }
 
@@ -193,7 +202,7 @@ void screenTest(){
 }
 
 void play(){
-
+  /*
   byte command = getCommand();
 
   if( command == UP )
@@ -232,7 +241,8 @@ void play(){
     moveDown();
     
   }
-
+*/
+  performAI();
   drawGame();
 
   //pulse onbaord LED and delay game
@@ -240,6 +250,45 @@ void play(){
   delay(tick_delay);               
   digitalWrite(0, LOW);    
   delay(tick_delay);      
+}
+
+void performAI()
+{
+  //save position of the brick in its raw state
+  memcpy((void*)&ai_brick, (void*)&current_brick, sizeof(brick_type));
+
+  struct brick_type ai_start_brick;
+
+  //first check the rotations(initial, rotated once, twice, thrice)
+  for(int ai_rot = 0; ai_rot < 3; ai_rot++ )
+  {
+    //first shift as far left as possible
+    while(checkShift(-1,0) == true)
+      shift(-1, 0);
+    //save this leftmost position
+    memcpy((void*)&ai_start_brick, (void*)&current_brick, sizeof(brick_type));
+
+    for(int ai_x = 0; ai_x < field_width-1; ai_x++)
+    {
+      //next move down until we can't
+      bool hitGround = false;
+      while(hitGround !=true )
+      {
+        shift(0,1);
+        hitGround = checkCollision();
+      }
+      //back up a step
+      shift(0,-1);
+      //calculate weight
+
+      //now restore the previous position and shift it right once
+      memcpy((void*)&current_brick, (void*)&ai_start_brick, sizeof(brick_type));
+      if(checkShift(1,0) == true)
+        shift(1,0);
+      else //if it isnt possible to shift then we cannot go any further right so break out to next rotation
+        break;
+    }
+  }
 }
 
 //get functions. set global variables.
@@ -600,22 +649,6 @@ void draw(byte color, byte x, byte y){
 //obvious function
 void gameOver()
 {
-  /*  
-Serial.println( "Game Over." );
-
-Serial.print( "Level:\t");
-Serial.println( level );
-
-Serial.print( "Lines:\t" );
-Serial.println( score_lines );
-
-Serial.print( "Score:\t");
-Serial.println( score );
-Serial.println();
-
-Serial.println("Insert coin to continue");
-waitForInput();
-*/
   newGame();
 }
 
@@ -636,5 +669,5 @@ void newGame()
 //Update LED strips
 void updateDisplay(){
 
-  WS2811RGB(rgb, ARRAYLEN(rgb));
+  FastSPI_LED.show();
 }
