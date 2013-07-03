@@ -37,6 +37,10 @@
 //game speed, basically delay between moves
 #define TICK_DELAY 100
 #define NUM_LEDS 100
+//weight given to the highest column for ai
+#define HIGH_COLUMN_WEIGHT 5
+//weight given to the number of holes for ai
+#define HOLE_WEIGHT 3
 
 
 static PROGMEM prog_uint16_t bricks[ BRICK_COUNT ][4] = {
@@ -179,6 +183,9 @@ void play(){
 
   if(currentBrick.positionY < 0)
     moveDown();
+
+  //this flag gets set after calculating the AI move
+  //and reset after we get the nextbrick in the nextBrick call
   if(aiCalculatedAlready == false)
   {
     performAI();
@@ -239,9 +246,13 @@ void performAI(){
   struct TBrick initialBrick;
   //save position of the brick in its raw state
   memcpy((void*)&initialBrick, (void*)&currentBrick, sizeof(TBrick));
+  //stores our 20 possible AI moves
   struct TAiMoveInfo aiMoves[20];
+  //counter keeps track of the current index into our aimoves array
   byte aiMoveCounter = 0;
+  //save position of the the brick at the left most rotated position
   struct TBrick aiLeftRotatedBrick;
+  //save position of the brick at the rotated position
   struct TBrick aiRotatedBrick;
 
   //first check the rotations(initial, rotated once, twice, thrice)
@@ -258,41 +269,40 @@ void performAI(){
     //save this leftmost rotated position
     memcpy((void*)&aiLeftRotatedBrick, (void*)&currentBrick, sizeof(TBrick));
 
-    for(int aiPositionY = 0; aiPositionY < FIELD_WIDTH; aiPositionY++)
+    //now check each possible position of X
+    for(int aiPositionX = 0; aiPositionX < FIELD_WIDTH; aiPositionX++)
     {
       //next move down until we can't
-      bool hitGround = false;
       while(checkGround() == false )
       {
         shift(0,1);
       }
-      //back up a step
-      //shift(0,-1);
-      //calculate weight
+      //calculate ai weight of this particular final position
       int aiMoveWeight = aiCalculateWeight();
-      
+      //save the weight, positions and rotations for this ai move
       aiMoves[aiMoveCounter].weight = aiMoveWeight;
       aiMoves[aiMoveCounter].rotation = currentBrick.rotation;
       aiMoves[aiMoveCounter].positionX = currentBrick.positionX;
       aiMoves[aiMoveCounter].positionY = currentBrick.positionY;
+      //move our index up for the next position to save to
       aiMoveCounter++;
       //drawGame();
       //Serial.println(aiMoveWeight);
       //delay(500);
+
       //now restore the previous position and shift it right by the column # we are checking
       memcpy((void*)&currentBrick, (void*)&aiLeftRotatedBrick, sizeof(TBrick));
-      if(checkShift(aiPositionY+1,0) == true)
-        shift(aiPositionY+1,0);
-      //else //if it isnt possible to shift then we cannot go any further right so break out to next rotation
-        //break;
+      if(checkShift(aiPositionX+1,0) == true)
+        shift(aiPositionX+1,0);
     }
 
     //reload rotated start position
     memcpy((void*)&currentBrick, (void*)&aiRotatedBrick, sizeof(TBrick));
-    
   }
   
-  //find highest weight 
+  //at this point we have calculated all the weights of every possible position and rotation of the brick
+
+  //find move with lowest weight 
   int lowestWeight = aiMoves[0].weight;
   int lowestWeightIndex = 0;
   for(int i = 1; i < aiMoveCounter; i++)
@@ -303,27 +313,35 @@ void performAI(){
       lowestWeightIndex = i;
     }
   }
-  //save this AI move
+  //save this AI move as the current move
   memcpy((void*)&aiCurrentMove, (void*)&aiMoves[lowestWeightIndex], sizeof(TAiMoveInfo));
-  //restore original brick
+  //restore original brick that we started with
   memcpy((void*)&currentBrick, (void*)&initialBrick, sizeof(TBrick));
+  //update the brick, set the ai flag so we know that we dont need to recalculate
   updateBrickArray();
   aiCalculatedAlready = true;
 }
 
+//calculates the ai weight
+//when this function is called, the currentBrick is moved into a final legal position at the bottom of the wall
+//which is why we add it to the wall first and then remove it at the end
 int aiCalculateWeight(){
   int weights = 0;
-  addToWall(); //add to wall first before calculating ai stuffs 
+  //add to wall first before calculating ai stuffs
+  addToWall(); 
+  //get the two weights
   int highestColumn = getHighestColumn();
   int holeCount = getHoleCount();
 
+  //if this position will yield a full completed row then its weight is 0, which is the lowest possible
+  //remember the the lowest weight will be the best move to make
   if(getFullLinePossible() == true)
   {
     weights = 0;
   }
   else
   {
-      weights = (5 * highestColumn) + (3 * holeCount);
+      weights = (HIGH_COLUMN_WEIGHT * highestColumn) + (HOLE_WEIGHT * holeCount);
   }
   removeFromWall(); //undo the wall addition when done
   return weights;
@@ -352,6 +370,7 @@ int getHighestColumn(){
   return maxColumnHeight;
 }
 
+//counts the number of given holes for the ai calculation
 int getHoleCount(){
   int holeCount = 0;
   for(int j = 0; j < FIELD_WIDTH; j++)
@@ -365,6 +384,7 @@ int getHoleCount(){
   return holeCount;
 }
 
+//determines if a full line is possible given the current wall (for ai)
 bool getFullLinePossible()
 {
   int lineCheck;
@@ -384,7 +404,8 @@ bool getFullLinePossible()
   }
   return false;
 }
-//get functions. set global variables.
+
+//gets commands according to ai state
 byte getCommand(){
   if(currentBrick.rotation != aiCurrentMove.rotation)
     return UP;
