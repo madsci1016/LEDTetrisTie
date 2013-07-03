@@ -100,6 +100,8 @@ static PROGMEM prog_uint8_t brick_colors[BRICK_COUNT]={
 byte wall[FIELD_WIDTH][FIELD_HEIGHT];
 //The 'wall' is the 2D array that holds all bricks that have already 'fallen' into place
 
+bool aiCalculatedAlready = false;
+
 struct TAiMoveInfo{
   byte rotation;
   int positionX, positionY;
@@ -114,6 +116,8 @@ struct TBrick{
   byte pattern[4][4]; //2D array of active brick shape, used for drawing and collosion detection
 
 } currentBrick;
+
+struct TAiMoveInfo aiCurrentMove;
 
 // Define the RGB pixel array and controller functions, using pin 0 on port b.
 // Sometimes chipsets wire in a backwards sort of way
@@ -172,10 +176,17 @@ void screenTest(){
 }
 
 void play(){
-  /*
-  byte command = getCommand();
 
-  if( command == UP )
+  if(currentBrick.positionY < 0)
+    moveDown();
+  if(aiCalculatedAlready == false)
+  {
+    performAI();
+  }
+  else
+  {
+    byte command = getCommand();
+      if( command == UP )
   {
     if( checkRotate( 1 ) == true )
     {
@@ -211,11 +222,8 @@ void play(){
     moveDown();
     
   }
-*/
-  if(currentBrick.positionY < 0)
-    moveDown();
-    
-  performAI();
+  }
+  
   drawGame();
 
   //pulse onbaord LED and delay game
@@ -250,7 +258,7 @@ void performAI(){
     //save this leftmost rotated position
     memcpy((void*)&aiLeftRotatedBrick, (void*)&currentBrick, sizeof(TBrick));
 
-    for(int aiPositionY = 0; aiPositionY < FIELD_WIDTH-1; aiPositionY++)
+    for(int aiPositionY = 0; aiPositionY < FIELD_WIDTH; aiPositionY++)
     {
       //next move down until we can't
       bool hitGround = false;
@@ -268,9 +276,9 @@ void performAI(){
       aiMoves[aiMoveCounter].positionX = currentBrick.positionX;
       aiMoves[aiMoveCounter].positionY = currentBrick.positionY;
       aiMoveCounter++;
-      drawGame();
-      Serial.println(aiMoveWeight);
-      delay(200);
+      //drawGame();
+      //Serial.println(aiMoveWeight);
+      //delay(500);
       //now restore the previous position and shift it right by the column # we are checking
       memcpy((void*)&currentBrick, (void*)&aiLeftRotatedBrick, sizeof(TBrick));
       if(checkShift(aiPositionY+1,0) == true)
@@ -284,33 +292,41 @@ void performAI(){
     
   }
   
-  //find smallest weight 
-  int smallestWeight = aiMoves[0].weight;
-  int smallestWeightIndex = 0;
+  //find highest weight 
+  int lowestWeight = aiMoves[0].weight;
+  int lowestWeightIndex = 0;
   for(int i = 1; i < aiMoveCounter; i++)
   {
-    if(aiMoves[i].weight <= smallestWeight)
+    if(aiMoves[i].weight <= lowestWeight)
     {
-      smallestWeight = aiMoves[i].weight;
-      smallestWeightIndex = i;
+      lowestWeight = aiMoves[i].weight;
+      lowestWeightIndex = i;
     }
   }
-  //go back to initial position
-  currentBrick.positionX = aiMoves[smallestWeightIndex].positionX;
-  currentBrick.positionY = aiMoves[smallestWeightIndex].positionY;
-  currentBrick.rotation = aiMoves[smallestWeightIndex].rotation;
+  //save this AI move
+  memcpy((void*)&aiCurrentMove, (void*)&aiMoves[lowestWeightIndex], sizeof(TAiMoveInfo));
+  //restore original brick
+  memcpy((void*)&currentBrick, (void*)&initialBrick, sizeof(TBrick));
   updateBrickArray();
-  moveDown();
-  
+  aiCalculatedAlready = true;
 }
 
 int aiCalculateWeight(){
-  addToWall(); //add to wall first before calculating ai stuffs
-
+  int weights = 0;
+  addToWall(); //add to wall first before calculating ai stuffs 
   int highestColumn = getHighestColumn();
   int holeCount = getHoleCount();
+
+  if(getFullLinePossible() == true)
+  {
+    weights = 0;
+  }
+  else
+  {
+      weights = (5 * highestColumn) + (3 * holeCount);
+  }
   removeFromWall(); //undo the wall addition when done
-  return (3 * highestColumn) + (5 * holeCount);
+  return weights;
 }
 
 int getHighestColumn(){
@@ -346,18 +362,38 @@ int getHoleCount(){
         holeCount++;
     }
   }
+  return holeCount;
+}
+
+bool getFullLinePossible()
+{
+  int lineCheck;
+  for(byte i = 0; i < FIELD_HEIGHT; i++)
+  {
+    lineCheck = 0;
+    for(byte k = 0; k < FIELD_WIDTH; k++)
+    {
+      if( wall[k][i] != 0)  
+        lineCheck++;
+    }
+    
+    if(lineCheck == FIELD_WIDTH)
+    {
+      return true;
+    }
+  }
+  return false;
 }
 //get functions. set global variables.
 byte getCommand(){
-  
-  //AI code to go here shortly
-  unsigned short  last_key = 0;
-
-  last_key=random(0,100);
-  last_key%=4;
-  
-  return (byte)last_key;
-
+  if(currentBrick.rotation != aiCurrentMove.rotation)
+    return UP;
+  if(currentBrick.positionX > aiCurrentMove.positionX)
+    return LEFT;
+  if(currentBrick.positionX < aiCurrentMove.positionX)
+    return RIGHT;
+  if(currentBrick.positionX == aiCurrentMove.positionX)
+    return DOWN;
 }
 
 //checks if the next rotation is possible or not.
@@ -610,7 +646,7 @@ void nextBrick(){
 
   currentBrick.color = pgm_read_byte(&(brick_colors[ currentBrick.type ]));
 
-
+  aiCalculatedAlready = false;
 
   updateBrickArray();
 
@@ -730,6 +766,7 @@ void updateDisplay(){
 
   FastSPI_LED.show();
 }
+
 
 
 
