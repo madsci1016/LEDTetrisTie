@@ -32,6 +32,11 @@ RGB LEDS data is on pin 1
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 
+//Constants on how it's physically wired
+#define LEDDATAPIN 2
+#define POWEROFFPIN 4
+#define BATTERYVOLTAGEPIN 0
+
 //constants and initialization
 #define UP  0
 #define DOWN  1
@@ -161,16 +166,15 @@ struct TBrick{
 //unsigned long  score_lines      = 0;
 
 // Define the RGB pixel array and controller functions, 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(80, 2, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(80, LEDDATAPIN, NEO_GRB + NEO_KHZ800);
 
 
 
 void setup(){
 
-  pinMode(2, OUTPUT); //LED on Model B
+  pinMode(LEDDATAPIN, OUTPUT); //LED on Model B
+  pinMode(POWEROFFPIN, OUTPUT); 
   pinMode(13, OUTPUT); 
-  pinMode(4, OUTPUT);
-
   newGame();
 
 
@@ -178,12 +182,28 @@ void setup(){
 
 void loop(){
 
+  checkBattery();
 
   //screenTest();
   play();
   
 }
 
+//checks battery voltage, toggles external power latch if battery is low
+void checkBattery(){
+
+  int voltage=0;
+  
+  //read ADC pin, convert to voltage measurement
+  voltage = map(analogRead(BATTERYVOLTAGEPIN),0,1024,0,5000);
+  
+  //low battery voltage, turn off power to tie
+  if(voltage<2800)
+    digitalWrite(4, HIGH);
+	
+}
+
+//tests pixels
 void screenTest(){
   for( int i = 0; i < FIELD_WIDTH; i++ )
   {
@@ -196,11 +216,23 @@ void screenTest(){
   }
 }
 
+//plays the game!
 void play(){
 
-if(currentBrick.positionY < 0)
+  //see how high the wall goes, end game early to save battery power
+  if(getHighestColumn() > 9)
+    newGame();
+  
+  
+if(currentBrick.positionY < 2){
     moveDown();
-
+  //pulse onbaord LED and delay game
+  digitalWrite(13, HIGH);   
+  delay(tick_delay);               
+  digitalWrite(13, LOW);    
+  delay(tick_delay);  
+}
+else{
   //this flag gets set after calculating the AI move
   //and reset after we get the nextbrick in the nextBrick call
   if(aiCalculatedAlready == false)
@@ -246,16 +278,20 @@ if(currentBrick.positionY < 0)
     moveDown();
     
   }
+    //pulse onbaord LED and delay game
+  digitalWrite(13, HIGH);   
+  delay(tick_delay);               
+  digitalWrite(13, LOW);    
+  delay(tick_delay);  
+  
   }
-
+  }
   drawGame();
 
-  //pulse onbaord LED and delay game
-  digitalWrite(0, HIGH);   
-  delay(tick_delay);               
-  digitalWrite(0, LOW);    
-  delay(tick_delay);      
+    
 }
+
+//performs AI player calculations. 
 void performAI(){
   struct TBrick initialBrick;
   //save position of the brick in its raw state
@@ -361,6 +397,8 @@ int aiCalculateWeight(){
   return weights;
 }
 
+
+//returns how high the wall goes 
 int getHighestColumn(){
   int columnHeight = 0;
   //count
