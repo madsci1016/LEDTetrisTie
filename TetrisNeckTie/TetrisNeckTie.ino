@@ -1,3 +1,5 @@
+
+
 /*
 * LEDTetrisNeckTie.c
 *
@@ -24,8 +26,8 @@ RGB LEDS data is on pin 1
 */
 
 
-#include <WS2811.h>
 
+#include <Adafruit_NeoPixel.h>
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 
@@ -35,6 +37,10 @@ RGB LEDS data is on pin 1
 #define RIGHT  2
 #define LEFT  3
 #define brick_count 7
+
+#define FULL 255
+#define WHITE 0xFF
+#define OFF 0
 
 //Display Settings
 #define    field_width 4
@@ -142,30 +148,16 @@ struct brick_type{
 //unsigned long  score        = 0;
 //unsigned long  score_lines      = 0;
 
-// Define the RGB pixel array and controller functions, using pin 0 on port b.
-DEFINE_WS2811_FN(WS2811RGB, PORTB, 1)
-RGB_t rgb[80]; //holds RGB brightness info
+// Define the RGB pixel array and controller functions, 
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(80, 2, NEO_GRB + NEO_KHZ800);
+
+
 
 void setup(){
 
-  pinMode(0, OUTPUT); //LED on Model B
-  pinMode(1, OUTPUT); 
-
-  for(int i=0; i<10; i++){
-    rgb[i].r=0;
-    rgb[i].g=0;
-    rgb[i].b=255;
-  }
-  updateDisplay();
-  randomSeed(analogRead(2));
-  delay(200); 
-  for(int i=0; i<80; i++){
-    rgb[i].r=0;
-    rgb[i].g=0;
-    rgb[i].b=0;
-  }
-  updateDisplay();
-  delay(200); 
+  pinMode(2, OUTPUT); //LED on Model B
+  pinMode(13, OUTPUT); 
+  pinMode(4, OUTPUT);
 
   newGame();
 
@@ -534,7 +526,7 @@ void drawWall(){
   for(int j=0; j < field_width; j++){
     for(int k = 0; k < field_height; k++ )
     {
-      draw(wall[j][k],j,k);
+      draw(wall[j][k],FULL,j,k);
     }
     
   }
@@ -557,7 +549,7 @@ void drawGame()
       {
         if( current_brick.position_y + k >= 0 )
         {
-          draw(current_brick.color, current_brick.position_x + j, current_brick.position_y + k);
+          draw(current_brick.color, FULL, current_brick.position_x + j, current_brick.position_y + k);
           //field[ position_x + j ][ p osition_y + k ] = current_brick_color;
         }
       }
@@ -567,11 +559,15 @@ void drawGame()
 }
 
 //takes a byte color values an draws it to pixel array at screen x,y values.
-// Assumes a UP->Down->Down->Up (Shorest wire path) LED strips display.
-void draw(byte color, byte x, byte y){
+// Assumes a Down->UP->RIGHT->Up->Down->etc (Shorest wire path) LED strips display.
+//new brightness value lets you dim LEDs w/o changing color. 
+void draw(byte color, signed int brightness, byte x, byte y){
   
   unsigned short address=0;
   byte r,g,b;
+  
+  //flip y for new tie layout. remove if your strips go up to down
+  y = (field_height-1) - y;
   
   //calculate address
   if(x%2==0) //even row
@@ -579,10 +575,8 @@ void draw(byte color, byte x, byte y){
   else //odd row
   address=((field_height*(x+1))-1)-y;
   
-  if(color==0){
-    rgb[address].r=0;
-    rgb[address].g=0;
-    rgb[address].b=0;
+  if(color==0 || brightness < 0){
+    strip.setPixelColor(address, 0);
   }
   else{
     //calculate colors, map to LED system
@@ -590,9 +584,11 @@ void draw(byte color, byte x, byte y){
     g=(color&0b00011100)>>2;
     r=(color&0b11100000)>>5;
     
-    rgb[address].r=map(r,0,7,0,255); 
-    rgb[address].g=map(g,0,7,0,255);
-    rgb[address].b=map(b,0,3,0,255);
+    //make sure brightness value is correct
+    brightness=constrain(brightness,0,FULL);
+    
+    strip.setPixelColor(address, map(r,0,7,0,brightness), map(g,0,7,0,brightness), map(b,0,3,0,brightness));
+
   }
   
 }
@@ -636,5 +632,7 @@ void newGame()
 //Update LED strips
 void updateDisplay(){
 
-  WS2811RGB(rgb, ARRAYLEN(rgb));
+  strip.show();
+  
+  
 }
