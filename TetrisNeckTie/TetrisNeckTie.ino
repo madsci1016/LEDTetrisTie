@@ -7,6 +7,7 @@
 *  Author: Bill Porter
 *    www.billporter.info
 *
+*   AI player code by: Mofidul Jamal
 *
 *    Code to run a wicked cool LED Tetris playing neck tie. Details:              
 *         http://www.billporter.info/2013/06/21/led-tetris-tie/
@@ -43,8 +44,8 @@ RGB LEDS data is on pin 1
 #define OFF 0
 
 //Display Settings
-#define    field_width 4
-#define    field_height 20
+#define    FIELD_WIDTH 4
+#define    FIELD_HEIGHT 20
 //const short    field_start_x    = 1;
 //const short    field_start_y    = 1;
 //const short           preview_start_x    = 13;
@@ -55,7 +56,10 @@ RGB LEDS data is on pin 1
 #define tick_delay 100 //game speed
 #define max_level 9
 
-
+//weight given to the highest column for ai
+#define HIGH_COLUMN_WEIGHT 5
+//weight given to the number of holes for ai
+#define HOLE_WEIGHT 3
 
 static PROGMEM prog_uint16_t bricks[ brick_count ][4] = {
   {
@@ -131,17 +135,25 @@ static PROGMEM prog_uint8_t brick_colors[brick_count]={
 //const unsigned int score_per_line          = 300;
 
 
-byte wall[field_width][field_height];
+byte wall[FIELD_WIDTH][FIELD_HEIGHT];
 //The 'wall' is the 2D array that holds all bricks that have already 'fallen' into place
 
-struct brick_type{
+bool aiCalculatedAlready = false;
+
+struct TAiMoveInfo{
+  byte rotation;
+  int positionX, positionY;
+  int weight;
+} aiCurrentMove;
+
+struct TBrick{
   byte type; //This is the current brick shape. 
   byte rotation; //active brick rotation
   byte color; //active brick color
-  int position_x, position_y; //active brick position
+  int positionX, positionY; //active brick position
   byte pattern[4][4]; //2D array of active brick shape, used for drawing and collosion detection
 
-} current_brick;
+} currentBrick;
 
 
 //unsigned short  level        = 0;
@@ -173,9 +185,9 @@ void loop(){
 }
 
 void screenTest(){
-  for( int i = 0; i < field_width; i++ )
+  for( int i = 0; i < FIELD_WIDTH; i++ )
   {
-    for( int k = 0; k < field_height; k++ )
+    for( int k = 0; k < FIELD_HEIGHT; k++ )
     {
       wall[i][k] = 7;
       drawGame();
@@ -186,9 +198,19 @@ void screenTest(){
 
 void play(){
 
-  byte command = getCommand();
+if(currentBrick.positionY < 0)
+    moveDown();
 
-  if( command == UP )
+  //this flag gets set after calculating the AI move
+  //and reset after we get the nextbrick in the nextBrick call
+  if(aiCalculatedAlready == false)
+  {
+    performAI();
+  }
+  else
+  {
+    byte command = getCommand();
+      if( command == UP )
   {
     if( checkRotate( 1 ) == true )
     {
@@ -224,6 +246,7 @@ void play(){
     moveDown();
     
   }
+  }
 
   drawGame();
 
@@ -233,18 +256,178 @@ void play(){
   digitalWrite(0, LOW);    
   delay(tick_delay);      
 }
+void performAI(){
+  struct TBrick initialBrick;
+  //save position of the brick in its raw state
+  memcpy((void*)&initialBrick, (void*)&currentBrick, sizeof(TBrick));
+  //stores our 20 possible AI moves
+  struct TAiMoveInfo aiMoves[20];
+  //counter keeps track of the current index into our aimoves array
+  byte aiMoveCounter = 0;
+  //save position of the the brick at the left most rotated position
+  struct TBrick aiLeftRotatedBrick;
+  //save position of the brick at the rotated position
+  struct TBrick aiRotatedBrick;
 
-//get functions. set global variables.
+  //first check the rotations(initial, rotated once, twice, thrice)
+  for(int aiRotation = 0; aiRotation < 4; aiRotation++ )
+  {
+    //rotate if possible
+    if(checkRotate(1) == true)
+      rotate(1);
+    //save the rotated brick
+    memcpy((void*)&aiRotatedBrick, (void*)&currentBrick, sizeof(TBrick));
+    //shift as far left as possible
+    while(checkShift(-1,0) == true)
+      shift(-1, 0);
+    //save this leftmost rotated position
+    memcpy((void*)&aiLeftRotatedBrick, (void*)&currentBrick, sizeof(TBrick));
+
+    //now check each possible position of X
+    for(int aiPositionX = 0; aiPositionX < FIELD_WIDTH; aiPositionX++)
+    {
+      //next move down until we can't
+      while(checkGround() == false )
+      {
+        shift(0,1);
+      }
+      //calculate ai weight of this particular final position
+      int aiMoveWeight = aiCalculateWeight();
+      //save the weight, positions and rotations for this ai move
+      aiMoves[aiMoveCounter].weight = aiMoveWeight;
+      aiMoves[aiMoveCounter].rotation = currentBrick.rotation;
+      aiMoves[aiMoveCounter].positionX = currentBrick.positionX;
+      aiMoves[aiMoveCounter].positionY = currentBrick.positionY;
+      //move our index up for the next position to save to
+      aiMoveCounter++;
+      //drawGame();
+      //Serial.println(aiMoveWeight);
+      //delay(500);
+
+      //now restore the previous position and shift it right by the column # we are checking
+      memcpy((void*)&currentBrick, (void*)&aiLeftRotatedBrick, sizeof(TBrick));
+      if(checkShift(aiPositionX+1,0) == true)
+        shift(aiPositionX+1,0);
+    }
+
+    //reload rotated start position
+    memcpy((void*)&currentBrick, (void*)&aiRotatedBrick, sizeof(TBrick));
+  }
+  
+  //at this point we have calculated all the weights of every possible position and rotation of the brick
+
+  //find move with lowest weight 
+  int lowestWeight = aiMoves[0].weight;
+  int lowestWeightIndex = 0;
+  for(int i = 1; i < aiMoveCounter; i++)
+  {
+    if(aiMoves[i].weight <= lowestWeight)
+    {
+      lowestWeight = aiMoves[i].weight;
+      lowestWeightIndex = i;
+    }
+  }
+  //save this AI move as the current move
+  memcpy((void*)&aiCurrentMove, (void*)&aiMoves[lowestWeightIndex], sizeof(TAiMoveInfo));
+  //restore original brick that we started with
+  memcpy((void*)&currentBrick, (void*)&initialBrick, sizeof(TBrick));
+  //update the brick, set the ai flag so we know that we dont need to recalculate
+  updateBrickArray();
+  aiCalculatedAlready = true;
+}
+
+//calculates the ai weight
+//when this function is called, the currentBrick is moved into a final legal position at the bottom of the wall
+//which is why we add it to the wall first and then remove it at the end
+int aiCalculateWeight(){
+  int weights = 0;
+  //add to wall first before calculating ai stuffs
+  addToWall(); 
+  //get the two weights
+  int highestColumn = getHighestColumn();
+  int holeCount = getHoleCount();
+
+  //if this position will yield a full completed row then its weight is 0, which is the lowest possible
+  //remember the the lowest weight will be the best move to make
+  if(getFullLinePossible() == true)
+  {
+    weights = 0;
+  }
+  else
+  {
+      weights = (HIGH_COLUMN_WEIGHT * highestColumn) + (HOLE_WEIGHT * holeCount);
+  }
+  removeFromWall(); //undo the wall addition when done
+  return weights;
+}
+
+int getHighestColumn(){
+  int columnHeight = 0;
+  //count
+  int maxColumnHeight = 0;
+  for(int j = 0; j < FIELD_WIDTH; j++)
+  {
+    columnHeight = 0;
+    for(int k = FIELD_HEIGHT-1; k!=0; k--)
+    {
+      if(wall[j][k] != 0)
+      {
+        columnHeight = FIELD_HEIGHT - k;
+        //Serial.print(k);
+        //Serial.println(" is k");
+        //delay(100);
+      }
+    }
+    if(columnHeight > maxColumnHeight)
+      maxColumnHeight = columnHeight;
+  }
+  return maxColumnHeight;
+}
+
+//counts the number of given holes for the ai calculation
+int getHoleCount(){
+  int holeCount = 0;
+  for(int j = 0; j < FIELD_WIDTH; j++)
+  {
+    for(int k = currentBrick.positionY + 2; k < FIELD_HEIGHT; k++)
+    {
+      if(wall[j][k] == 0)
+        holeCount++;
+    }
+  }
+  return holeCount;
+}
+
+//determines if a full line is possible given the current wall (for ai)
+bool getFullLinePossible()
+{
+  int lineCheck;
+  for(byte i = 0; i < FIELD_HEIGHT; i++)
+  {
+    lineCheck = 0;
+    for(byte k = 0; k < FIELD_WIDTH; k++)
+    {
+      if( wall[k][i] != 0)  
+        lineCheck++;
+    }
+    
+    if(lineCheck == FIELD_WIDTH)
+    {
+      return true;
+    }
+  }
+  return false;
+}
+//gets commands according to ai state
 byte getCommand(){
-  
-  //AI code to go here shortly
-  unsigned short  last_key = 0;
-
-  last_key=random(0,100);
-  last_key%=4;
-  
-  return (byte)last_key;
-
+  if(currentBrick.rotation != aiCurrentMove.rotation)
+    return UP;
+  if(currentBrick.positionX > aiCurrentMove.positionX)
+    return LEFT;
+  if(currentBrick.positionX < aiCurrentMove.positionX)
+    return RIGHT;
+  if(currentBrick.positionX == aiCurrentMove.positionX)
+    return DOWN;
 }
 
 //checks if the next rotation is possible or not.
@@ -286,9 +469,9 @@ bool checkCeiling()
   {
     for( int k = 0; k < 4; k++ )
     {
-      if(current_brick.pattern[i][k] != 0)
+      if(currentBrick.pattern[i][k] != 0)
       {
-        if( ( current_brick.position_y + k ) < 0 )
+        if( ( currentBrick.positionY + k ) < 0 )
         {
           return true;
         }
@@ -308,22 +491,22 @@ bool checkCollision()
   {
     for( byte k = 0; k < 4; k++ )
     {
-      if( current_brick.pattern[i][k] != 0 )
+      if( currentBrick.pattern[i][k] != 0 )
       {
-        x = current_brick.position_x + i;
-        y = current_brick.position_y + k;
+        x = currentBrick.positionX + i;
+        y = currentBrick.positionY + k;
 
         if(x >= 0 && y >= 0 && wall[x][y] != 0)
         {
           //this is another brick IN the wall!
           return true;
         }
-        else if( x < 0 || x >= field_width )
+        else if( x < 0 || x >= FIELD_WIDTH )
         {
           //out to the left or right
           return true;
         }
-        else if( y >= field_height )
+        else if( y >= FIELD_HEIGHT )
         {
           //below sea level
           return true;
@@ -337,8 +520,8 @@ bool checkCollision()
 //updates the position variable according to the parameters
 void shift(short right, short down)
 {
-  current_brick.position_x += right;
-  current_brick.position_y += down;
+  currentBrick.positionX += right;
+  currentBrick.positionY += down;
 }
 
 // updates the rotation variable, wraps around and calls updateBrickArray().
@@ -347,24 +530,24 @@ void rotate( bool direction )
 {
   if( direction == 1 )
   {
-    if(current_brick.rotation == 0)
+    if(currentBrick.rotation == 0)
     {
-      current_brick.rotation = 3;
+      currentBrick.rotation = 3;
     }
     else
     {
-      current_brick.rotation--;
+      currentBrick.rotation--;
     }
   }
   else
   {
-    if(current_brick.rotation == 3)
+    if(currentBrick.rotation == 3)
     {
-      current_brick.rotation = 0;
+      currentBrick.rotation = 0;
     }
     else
     {
-      current_brick.rotation++;
+      currentBrick.rotation++;
     }
   }
   updateBrickArray();
@@ -405,36 +588,50 @@ void addToWall()
   {
     for( byte k = 0; k < 4; k++ )
     {
-      if(current_brick.pattern[i][k] != 0){
-        wall[current_brick.position_x + i][current_brick.position_y + k] = current_brick.color;
+      if(currentBrick.pattern[i][k] != 0){
+        wall[currentBrick.positionX + i][currentBrick.positionY + k] = currentBrick.color;
         
       }
     }
   }
 }
 
-//uses the current_brick_type and rotation variables to render a 4x4 pixel array of the current block
+//removes brick from wall, used by ai algo
+void removeFromWall(){
+  for( byte i = 0; i < 4; i++ )
+  {
+    for( byte k = 0; k < 4; k++ )
+    {
+      if(currentBrick.pattern[i][k] != 0){
+        wall[currentBrick.positionX + i][currentBrick.positionY + k] = 0;
+        
+      }
+    }
+  }
+}
+
+//uses the currentBrick_type and rotation variables to render a 4x4 pixel array of the current block
 // from the 2-byte binary reprsentation of the block
 void updateBrickArray()
 {
-  unsigned int data = pgm_read_word(&(bricks[ current_brick.type ][ current_brick.rotation ]));
+  unsigned int data = pgm_read_word(&(bricks[ currentBrick.type ][ currentBrick.rotation ]));
   for( byte i = 0; i < 4; i++ )
   {
     for( byte k = 0; k < 4; k++ )
     {
       if(bitRead(data, 4*i+3-k))
-      current_brick.pattern[k][i] = current_brick.color; 
+      currentBrick.pattern[k][i] = currentBrick.color; 
       else
-      current_brick.pattern[k][i] = 0;
+      currentBrick.pattern[k][i] = 0;
     }
   }
 }
 //clears the wall for a new game
 void clearWall()
 {
-  for( byte i = 0; i < field_width; i++ )
+  for( byte i = 0; i < FIELD_WIDTH; i++ )
   {
-    for( byte k = 0; k < field_height; k++ )
+    for( byte k = 0; k < FIELD_HEIGHT; k++ )
     {
       wall[i][k] = 0;
     }
@@ -446,22 +643,22 @@ void clearWall()
 bool clearLine()
 {
   int line_check;
-  for( byte i = 0; i < field_height; i++ )
+  for( byte i = 0; i < FIELD_HEIGHT; i++ )
   {
     line_check = 0;
 
-    for( byte k = 0; k < field_width; k++ )
+    for( byte k = 0; k < FIELD_WIDTH; k++ )
     {
       if( wall[k][i] != 0)  
       line_check++;
     }
 
-    if( line_check == field_width )
+    if( line_check == FIELD_WIDTH )
     {
       flashLine( i );
       for( int  k = i; k >= 0; k-- )
       {
-        for( byte m = 0; m < field_width; m++ )
+        for( byte m = 0; m < FIELD_WIDTH; m++ )
         {
           if( k > 0)
           {
@@ -481,17 +678,16 @@ bool clearLine()
 }
 
 //randomly selects a new brick and resets rotation / position.
-void nextBrick()
-{
-  current_brick.rotation = 0;
-  current_brick.position_x = round(field_width / 2) - 2;
-  current_brick.position_y = -3;
+void nextBrick(){
+  currentBrick.rotation = 0;
+  currentBrick.positionX = round(FIELD_WIDTH / 2) - 2;
+  currentBrick.positionY = -3;
 
-  current_brick.type = random( 0, 6 );
+  currentBrick.type = random( 0, 6 );
 
-  current_brick.color = pgm_read_byte(&(brick_colors[ current_brick.type ]));
+  currentBrick.color = pgm_read_byte(&(brick_colors[ currentBrick.type ]));
 
-
+  aiCalculatedAlready = false;
 
   updateBrickArray();
 
@@ -504,7 +700,7 @@ void flashLine( int line ){
   bool state = 1;
   for(byte i = 0; i < 6; i++ )
   {
-    for(byte k = 0; k < field_width; k++ )
+    for(byte k = 0; k < FIELD_WIDTH; k++ )
     {  
       if(state)
       wall[k][line] = 0b11111111;
@@ -523,8 +719,8 @@ void flashLine( int line ){
 
 //draws wall only, does not update display
 void drawWall(){
-  for(int j=0; j < field_width; j++){
-    for(int k = 0; k < field_height; k++ )
+  for(int j=0; j < FIELD_WIDTH; j++){
+    for(int k = 0; k < FIELD_HEIGHT; k++ )
     {
       draw(wall[j][k],FULL,j,k);
     }
@@ -545,12 +741,12 @@ void drawGame()
   {
     for( int k = 0; k < 4; k++ )
     {
-      if(current_brick.pattern[j][k] != 0)
+      if(currentBrick.pattern[j][k] != 0)
       {
-        if( current_brick.position_y + k >= 0 )
+        if( currentBrick.positionY + k >= 0 )
         {
-          draw(current_brick.color, FULL, current_brick.position_x + j, current_brick.position_y + k);
-          //field[ position_x + j ][ p osition_y + k ] = current_brick_color;
+          draw(currentBrick.color, FULL, currentBrick.positionX + j, currentBrick.positionY + k);
+          //field[ positionX + j ][ p osition_y + k ] = currentBrick_color;
         }
       }
     }
@@ -567,13 +763,13 @@ void draw(byte color, signed int brightness, byte x, byte y){
   byte r,g,b;
   
   //flip y for new tie layout. remove if your strips go up to down
-  y = (field_height-1) - y;
+  y = (FIELD_HEIGHT-1) - y;
   
   //calculate address
   if(x%2==0) //even row
-  address=field_height*x+y;
+  address=FIELD_HEIGHT*x+y;
   else //odd row
-  address=((field_height*(x+1))-1)-y;
+  address=((FIELD_HEIGHT*(x+1))-1)-y;
   
   if(color==0 || brightness < 0){
     strip.setPixelColor(address, 0);
