@@ -1,5 +1,4 @@
 
-
 /*
 * LEDTetrisNeckTie.c
 *
@@ -297,7 +296,7 @@ void performAI(){
   //save position of the brick in its raw state
   memcpy((void*)&initialBrick, (void*)&currentBrick, sizeof(TBrick));
   //stores our 20 possible AI moves
-  struct TAiMoveInfo aiMoves[20];
+  struct TAiMoveInfo aiMoves[4 * FIELD_WIDTH];
   //counter keeps track of the current index into our aimoves array
   byte aiMoveCounter = 0;
   //save position of the the brick at the left most rotated position
