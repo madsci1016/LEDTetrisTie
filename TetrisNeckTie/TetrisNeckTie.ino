@@ -197,7 +197,7 @@ void checkBattery(){
   voltage = map(analogRead(BATTERYVOLTAGEPIN),0,1024,0,5000);
   
   //low battery voltage, turn off power to tie
-  if(voltage<2800)
+  if(voltage<2450)
     digitalWrite(4, HIGH);
 	
 }
