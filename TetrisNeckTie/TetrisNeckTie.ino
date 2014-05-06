@@ -720,7 +720,7 @@ void nextBrick(){
   currentBrick.positionX = round(FIELD_WIDTH / 2) - 2;
   currentBrick.positionY = -3;
 
-  currentBrick.type = random( 0, 6 );
+  currentBrick.type = random( 0, brick_count );
 
   currentBrick.color = pgm_read_byte(&(brick_colors[ currentBrick.type ]));
 
